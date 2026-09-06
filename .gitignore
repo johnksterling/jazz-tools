@@ -1,0 +1,21 @@
+# Binaries
+jazz-tools
+main
+*.exe
+*.test
+
+# Editor / Backup files
+*~
+*.swp
+*.swo
+.DS_Store
+
+# Generated scores
+*.ly
+*.pdf
+*.png
+*_guide_tones.*
+test_jordu.*
+
+# Sensitive files
+pat.txt

@@ -45,6 +45,9 @@ func divisionType(div int) (typeName string, dotted bool) {
 // GenerateMusicXMLGuideTones creates a complete, valid MusicXML string containing the guide tones
 // rendered as two distinct voices (Voice 1 upper / stems up, Voice 2 lower / stems down).
 func GenerateMusicXMLGuideTones(tune *Tune) (string, error) {
+	// Run tonal center analysis
+	AnalyzeTonalCenters(tune)
+
 	// First, flatten all chords and run voice leading
 	var chords []Chord
 	for _, m := range tune.Measures {
@@ -174,8 +177,21 @@ func GenerateMusicXMLGuideTones(tune *Tune) (string, error) {
 					v1Consumed += restDiv
 				}
 
+				// Tonal center direction badge above measure
+				if tc.IsTonalCenterChange && tc.TonalCenter != "" {
+					buf.WriteString("      <direction placement=\"above\">\n")
+					buf.WriteString("        <direction-type>\n")
+					buf.WriteString(fmt.Sprintf("          <words font-weight=\"bold\" color=\"%s\">Key: %s</words>\n", tc.TonalCenterHex, tc.TonalCenter))
+					buf.WriteString("        </direction-type>\n")
+					buf.WriteString("      </direction>\n")
+				}
+
 				// Harmony annotation above Voice 1
-				buf.WriteString("      <harmony print-frame=\"no\">\n")
+				harmColor := ""
+				if tc.TonalCenterHex != "" {
+					harmColor = fmt.Sprintf(" color=\"%s\"", tc.TonalCenterHex)
+				}
+				buf.WriteString(fmt.Sprintf("      <harmony print-frame=\"no\"%s>\n", harmColor))
 				buf.WriteString("        <root>\n")
 				buf.WriteString(fmt.Sprintf("          <root-step>%c</root-step>\n", tc.Chord.Root.Step))
 				if tc.Chord.Root.Alter != 0 {
@@ -196,7 +212,11 @@ func GenerateMusicXMLGuideTones(tune *Tune) (string, error) {
 				// Voice 1 Note
 				gt := tc.GuideTones.Voice1
 				nType, nDot := divisionType(durDiv)
-				buf.WriteString("      <note>\n")
+				noteColor := ""
+				if tc.TonalCenterHex != "" {
+					noteColor = fmt.Sprintf(" color=\"%s\"", tc.TonalCenterHex)
+				}
+				buf.WriteString(fmt.Sprintf("      <note%s>\n", noteColor))
 				buf.WriteString("        <pitch>\n")
 				buf.WriteString(fmt.Sprintf("          <step>%c</step>\n", gt.Step))
 				if gt.Alter != 0 {
@@ -266,7 +286,11 @@ func GenerateMusicXMLGuideTones(tune *Tune) (string, error) {
 
 				gt := tc.GuideTones.Voice2
 				nType, nDot := divisionType(durDiv)
-				buf.WriteString("      <note>\n")
+				noteColor := ""
+				if tc.TonalCenterHex != "" {
+					noteColor = fmt.Sprintf(" color=\"%s\"", tc.TonalCenterHex)
+				}
+				buf.WriteString(fmt.Sprintf("      <note%s>\n", noteColor))
 				buf.WriteString("        <pitch>\n")
 				buf.WriteString(fmt.Sprintf("          <step>%c</step>\n", gt.Step))
 				if gt.Alter != 0 {

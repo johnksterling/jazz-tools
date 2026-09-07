@@ -260,3 +260,19 @@ func (c Chord) GetGuideTones() (third Pitch, seventh Pitch, err error) {
 
 	return third, seventh, nil
 }
+
+// ChordTones returns the primary notes of the chord (Root, 3rd, 5th, 7th).
+func (c Chord) ChordTones() []Pitch {
+	third, seventh, err := c.GetGuideTones()
+	if err != nil {
+		return []Pitch{c.Root}
+	}
+	fifth := c.Root.AddInterval(4, 7)
+	switch c.Quality {
+	case QualityHalfDiminished, QualityDiminished7, QualityDiminishedTriad:
+		fifth = c.Root.AddInterval(4, 6)
+	case QualityAugmentedTriad:
+		fifth = c.Root.AddInterval(4, 8)
+	}
+	return []Pitch{c.Root, third, fifth, seventh}
+}

@@ -92,8 +92,11 @@ func runAnalyze(tune *Tune) {
 		return
 	}
 
-	fmt.Println("Measure | Beat | Chord         | Hold (beats) | Voice 1 (3/7) | Voice 2 (3/7)")
-	fmt.Println("--------+------+---------------+--------------+---------------+--------------")
+	// Run tonal center analysis
+	AnalyzeTonalCenters(tune)
+
+	fmt.Println("Measure | Beat | Chord         | Hold (beats) | Voice 1 (3/7) | Voice 2 (3/7) | Tonal Center")
+	fmt.Println("--------+------+---------------+--------------+---------------+---------------+-------------")
 
 	pairIdx := 0
 	for _, m := range tune.Measures {
@@ -103,17 +106,26 @@ func runAnalyze(tune *Tune) {
 				p = pairs[pairIdx]
 				pairIdx++
 			}
-			fmt.Printf(" %5d  | %4.1f | %-13s | %12.1f | %-13s | %-13s\n",
+			tcInfo := GetTonalCenterInfo(tc.TonalCenter)
+			coloredCenter := fmt.Sprintf("%s%-11s\033[0m", tcInfo.AnsiColor, tc.TonalCenter)
+			fmt.Printf(" %5d  | %4.1f | %-13s | %12.1f | %-13s | %-13s | %s\n",
 				m.Number,
 				tc.BeatOffset+1.0, // 1-indexed beat for musician readability
 				tc.Chord.String(),
 				tc.DurationBeats,
 				p.Voice1.String(),
 				p.Voice2.String(),
+				coloredCenter,
 			)
 		}
 	}
-	fmt.Println("==================================================")
+	fmt.Println("---------------------------------------------------------------------------------------------")
+	journey := HarmonicJourney(tune)
+	if journey != "" {
+		fmt.Println("Harmonic Journey:")
+		fmt.Printf("  %s\n", journey)
+	}
+	fmt.Println("=============================================================================================")
 }
 
 func runCompanion(tune *Tune, outputPath string, generatePDF bool) {

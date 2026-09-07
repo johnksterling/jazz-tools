@@ -109,6 +109,9 @@ func lilypondChordName(c Chord, beats float64) string {
 
 // GenerateLilyPondScore generates a complete LilyPond score file for printing companion sheet music.
 func GenerateLilyPondScore(tune *Tune) (string, error) {
+	// Run tonal center analysis
+	AnalyzeTonalCenters(tune)
+
 	// Ensure voice leading is run
 	var chords []Chord
 	for _, m := range tune.Measures {
@@ -172,6 +175,9 @@ func GenerateLilyPondScore(tune *Tune) (string, error) {
 			cPos := 0.0
 			chordBuf.WriteString("  ")
 			for _, tc := range m.Chords {
+				if tc.IsTonalCenterChange && tc.TonalCenterColor != "" {
+					chordBuf.WriteString(fmt.Sprintf("\\override ChordNames.ChordName.color = #%s ", tc.TonalCenterColor))
+				}
 				if tc.BeatOffset > cPos {
 					restBeats := tc.BeatOffset - cPos
 					chordBuf.WriteString(fmt.Sprintf("r%s ", lilypondDuration(restBeats)))
@@ -196,7 +202,15 @@ func GenerateLilyPondScore(tune *Tune) (string, error) {
 				}
 				p := tc.GuideTones.Voice1
 				dur := tc.DurationBeats
-				upperBuf.WriteString(fmt.Sprintf("%s%s ", lilypondPitch(p), lilypondDuration(dur)))
+				colorPrefix := ""
+				if tc.TonalCenterColor != "" {
+					colorPrefix = fmt.Sprintf("\\tweak color #%s ", tc.TonalCenterColor)
+				}
+				markupSuffix := ""
+				if tc.IsTonalCenterChange && tc.TonalCenter != "" {
+					markupSuffix = fmt.Sprintf("^\\markup { \\with-color #%s \\rounded-box \\bold \\fontsize #-2 \"Key: %s\" }", tc.TonalCenterColor, tc.TonalCenter)
+				}
+				upperBuf.WriteString(fmt.Sprintf("%s%s%s%s ", colorPrefix, lilypondPitch(p), lilypondDuration(dur), markupSuffix))
 				v1Pos += dur
 			}
 			if v1Pos < beats {
@@ -215,7 +229,11 @@ func GenerateLilyPondScore(tune *Tune) (string, error) {
 				}
 				p := tc.GuideTones.Voice2
 				dur := tc.DurationBeats
-				lowerBuf.WriteString(fmt.Sprintf("%s%s ", lilypondPitch(p), lilypondDuration(dur)))
+				colorPrefix := ""
+				if tc.TonalCenterColor != "" {
+					colorPrefix = fmt.Sprintf("\\tweak color #%s ", tc.TonalCenterColor)
+				}
+				lowerBuf.WriteString(fmt.Sprintf("%s%s%s ", colorPrefix, lilypondPitch(p), lilypondDuration(dur)))
 				v2Pos += dur
 			}
 			if v2Pos < beats {

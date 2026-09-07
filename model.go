@@ -11,11 +11,15 @@ type GuideTonePair struct {
 
 // TimedChord represents a chord within a specific measure, including its hold duration in beats.
 type TimedChord struct {
-	Chord         Chord
-	MeasureNumber int
-	BeatOffset    float64 // 0-indexed beat offset within measure (e.g. 0.0, 1.0, 1.5, 2.0)
-	DurationBeats float64 // duration in beats (e.g. 1.0, 1.5, 2.0, 4.0)
-	GuideTones    *GuideTonePair
+	Chord               Chord
+	MeasureNumber       int
+	BeatOffset          float64 // 0-indexed beat offset within measure (e.g. 0.0, 1.0, 1.5, 2.0)
+	DurationBeats       float64 // duration in beats (e.g. 1.0, 1.5, 2.0, 4.0)
+	GuideTones          *GuideTonePair
+	TonalCenter         string // e.g. "F", "Bb", "Eb", "G min"
+	TonalCenterColor    string // LilyPond rgb-color string e.g. "(rgb-color 0.11 0.31 0.85)"
+	TonalCenterHex      string // Hex color e.g. "#1D4ED8"
+	IsTonalCenterChange bool   // true if this chord introduces a new tonal center
 }
 
 // TimedMeasure represents a single measure with its time signature, key, and chords.

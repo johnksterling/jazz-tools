@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -129,7 +130,9 @@ func runAnalyze(tune *Tune) {
 }
 
 func runCompanion(tune *Tune, outputPath string, generatePDF bool) {
-	baseName := strings.ReplaceAll(tune.Title, " ", "_")
+	cleanTitle := strings.ReplaceAll(tune.Title, " ", "_")
+	reg := regexp.MustCompile(`[^a-zA-Z0-9_\-]`)
+	baseName := reg.ReplaceAllString(cleanTitle, "")
 	if baseName == "" {
 		baseName = "tune"
 	}
@@ -153,14 +156,15 @@ func runCompanion(tune *Tune, outputPath string, generatePDF bool) {
 			return
 		}
 
-		lyFile := baseName + "_guide_tones.ly"
+		outDir := filepath.Dir(outputPath)
+		lyFile := filepath.Join(outDir, baseName+"_guide_tones.ly")
 		if err := os.WriteFile(lyFile, []byte(lyStr), 0644); err != nil {
 			fmt.Printf("Error saving LilyPond file: %v\n", err)
 			return
 		}
 
-		pdfFile := baseName + "_guide_tones.pdf"
-		cmdErr := CompileLilyPondToPDF(lyFile, ".")
+		pdfFile := filepath.Join(outDir, baseName+"_guide_tones.pdf")
+		cmdErr := CompileLilyPondToPDF(lyFile, outDir)
 		if cmdErr != nil {
 			fmt.Printf("Error running LilyPond: %v\n", cmdErr)
 		} else {

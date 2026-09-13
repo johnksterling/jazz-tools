@@ -25,6 +25,7 @@ func printUsage() {
 	fmt.Println("Flags for companion:")
 	fmt.Println("  -o string    Output MusicXML path (default: <title>_guide_tones.musicxml)")
 	fmt.Println("  --pdf        Compile print-ready PDF via system LilyPond")
+	fmt.Println("  --bars int   Measures per line (default: auto - 4 for <= 16 bars, 8 for standard tunes, auto-scaled if longer)")
 	fmt.Println()
 }
 
@@ -129,7 +130,7 @@ func runAnalyze(tune *Tune) {
 	fmt.Println("=============================================================================================")
 }
 
-func runCompanion(tune *Tune, outputPath string, generatePDF bool) {
+func runCompanion(tune *Tune, outputPath string, generatePDF bool, userBars int) {
 	cleanTitle := strings.ReplaceAll(tune.Title, " ", "_")
 	reg := regexp.MustCompile(`[^a-zA-Z0-9_\-]`)
 	baseName := reg.ReplaceAllString(cleanTitle, "")
@@ -150,7 +151,7 @@ func runCompanion(tune *Tune, outputPath string, generatePDF bool) {
 	fmt.Printf("✓ Created MusicXML companion sheet: %s\n", outputPath)
 
 	if generatePDF {
-		lyStr, err := GenerateLilyPondScore(tune)
+		lyStr, err := GenerateLilyPondScoreWithConfig(tune, userBars)
 		if err != nil {
 			fmt.Printf("Error generating LilyPond score: %v\n", err)
 			return
@@ -190,10 +191,11 @@ func main() {
 		compCmd := flag.NewFlagSet("companion", flag.ExitOnError)
 		outFile := compCmd.String("o", "", "Output MusicXML file path")
 		pdfFlag := compCmd.Bool("pdf", false, "Compile PDF using LilyPond")
+		barsFlag := compCmd.Int("bars", 0, "Target measures per line (default: auto)")
 
 		if len(os.Args) < 3 {
 			fmt.Println("Error: please provide a MusicXML file or iReal Pro URL.")
-			fmt.Println("Usage: jazz-tools companion <file.musicxml | irealb://...> [-o out.musicxml] [--pdf]")
+			fmt.Println("Usage: jazz-tools companion <file.musicxml | irealb://...> [-o out.musicxml] [--pdf] [--bars N]")
 			os.Exit(1)
 		}
 
@@ -206,7 +208,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		runCompanion(tune, *outFile, *pdfFlag)
+		runCompanion(tune, *outFile, *pdfFlag, *barsFlag)
 
 	case "analyze":
 		if len(os.Args) < 3 {

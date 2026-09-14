@@ -26,9 +26,9 @@ func printUsage() {
 	fmt.Println("  -o string            Output MusicXML path (default: <title>_guide_tones.musicxml)")
 	fmt.Println("  --pdf                Compile print-ready PDF via system LilyPond")
 	fmt.Println("  --bars int           Measures per line (default: auto - 4 for <= 16 bars, 8 for standard tunes, auto-scaled if longer)")
-	fmt.Println("  --annotations string Annotations to include: all, none, keys, devices (comma-separated, default: all)")
-	fmt.Println("  --keys / --no-keys   Include / omit tonal center key badges")
-	fmt.Println("  --devices / --no-devices Include / omit Berklee harmonic device brackets (ii-V, etc.)")
+	fmt.Println("  --annotations string Annotations to include: all, none, keys, devices (comma-separated, default: devices)")
+	fmt.Println("  --keys / --no-keys   Include / omit tonal center key badges (default: off)")
+	fmt.Println("  --devices / --no-devices Include / omit Berklee harmonic device brackets (ii-V, etc., default: on)")
 	fmt.Println()
 }
 
@@ -213,8 +213,8 @@ func main() {
 		outFile := compCmd.String("o", "", "Output MusicXML file path")
 		pdfFlag := compCmd.Bool("pdf", false, "Compile PDF using LilyPond")
 		barsFlag := compCmd.Int("bars", 0, "Target measures per line (default: auto)")
-		annotationsFlag := compCmd.String("annotations", "all", "Annotations to include: all, none, keys, devices (comma-separated)")
-		keysFlag := compCmd.Bool("keys", true, "Include key center annotations")
+		annotationsFlag := compCmd.String("annotations", "devices", "Annotations to include: all, none, keys, devices (comma-separated)")
+		keysFlag := compCmd.Bool("keys", false, "Include key center annotations")
 		noKeysFlag := compCmd.Bool("no-keys", false, "Omit key center annotations")
 		devicesFlag := compCmd.Bool("devices", true, "Include harmonic device annotations")
 		noDevicesFlag := compCmd.Bool("no-devices", false, "Omit harmonic device annotations")

@@ -108,20 +108,15 @@ jazz-tools companion "MySetlist.html" --pdf
 Fine-tune annotations according to your rehearsal or pedagogical needs:
 
 ```bash
-# Default: both Berklee harmonic devices and tonal key badges enabled
+# Default: Berklee harmonic devices (ii-V brackets & arrows) enabled:
 jazz-tools companion Autumn_Leaves.musicxml --pdf
 
-# Only show key center badges (no brackets/arrows)
-jazz-tools companion Autumn_Leaves.musicxml --pdf --no-devices
+# Also include tonal center key badges:
+jazz-tools companion Autumn_Leaves.musicxml --pdf --keys
 # or:
-jazz-tools companion Autumn_Leaves.musicxml --pdf --annotations keys
+jazz-tools companion Autumn_Leaves.musicxml --pdf --annotations all
 
-# Only show Berklee brackets and resolution arrows (no key badges)
-jazz-tools companion Autumn_Leaves.musicxml --pdf --no-keys
-# or:
-jazz-tools companion Autumn_Leaves.musicxml --pdf --annotations devices
-
-# Clean score with only chords and guide tones
+# Clean score with only chords and guide tones (no annotations):
 jazz-tools companion Autumn_Leaves.musicxml --pdf --annotations none
 
 # Manually override measures per system (e.g. 4 bars per line):

@@ -1,0 +1,46 @@
+name: Feature Request
+description: Suggest a new harmonic device, analysis capability, or CLI feature
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea to improve jazz harmony analysis, lead sheet ingestion, or companion engraving? Let us know!
+  - type: dropdown
+    id: feature_category
+    attributes:
+      label: Feature Category
+      description: What area does this feature target?
+      options:
+        - "New Harmonic Device (e.g. Backdoor ii-V, Coltrane changes, pedal point)"
+        - "Voice Leading & Guide Tones"
+        - "LilyPond Score Layout & Engraving Style"
+        - "File Format Support (e.g. MIDI, ABC, GuitarPro)"
+        - "CLI & Developer Ergonomics"
+        - "Other"
+    validations:
+      required: true
+  - type: textarea
+    id: problem_or_motivation
+    attributes:
+      label: Problem or Motivation
+      description: Is your feature request related to a specific jazz tune, harmonic pattern, or practice workflow?
+      placeholder: "e.g. In Lady Bird, the progression moves through non-functional major 7th chords..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed Solution & Musical Behavior
+      description: Describe how the feature should behave and how it might be annotated or displayed in the terminal/score.
+      placeholder: Describe the desired terminal output, flag options, or LilyPond annotation style.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or workarounds you've considered.
+    validations:
+      required: false

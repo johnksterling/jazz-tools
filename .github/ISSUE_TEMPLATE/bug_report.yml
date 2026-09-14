@@ -1,0 +1,56 @@
+name: Bug Report
+description: Report a parsing error, incorrect harmonic analysis, or score engraving issue
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting an issue with `jazz-tools`! Please provide details to help us reproduce and fix it.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Component
+      description: Which part of jazz-tools encountered the issue?
+      options:
+        - "Harmonic Device Detection (ii-V, tritone sub, secondary dominant)"
+        - "Tonal Center Detection / Harmonic Journey"
+        - "Guide Tone Extraction / Voice Leading"
+        - "MusicXML Parsing / Import"
+        - "iReal Pro (irealb:// or HTML export) Import"
+        - "LilyPond PDF Engraving / Formatting"
+        - "CLI / Other"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe what happened versus what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce / Reproduction Sample
+      description: Please share the CLI command run, along with the chord symbol, MusicXML snippet, or iReal Pro URL.
+      placeholder: |
+        Command:
+        jazz-tools companion "sample.musicxml" --pdf
+
+        Chord Progression or iReal URL:
+        ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment Info
+      description: OS version, Go version (`go version`), and LilyPond version (`lilypond --version` if applicable).
+      value: |
+        - OS: [e.g. macOS 14.5 / Ubuntu 22.04]
+        - Go Version: [e.g. 1.22.4]
+        - LilyPond Version (if engraving): [e.g. 2.24.3]
+    validations:
+      required: false

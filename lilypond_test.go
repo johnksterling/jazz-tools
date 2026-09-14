@@ -2,7 +2,6 @@ package main
 
 import (
 	"os"
-	"os/exec"
 	"testing"
 )
 
@@ -24,11 +23,8 @@ func TestLilyPondScoreGenerationAndCompile(t *testing.T) {
 	defer os.Remove(lyFile)
 	defer os.Remove("test_jordu.pdf")
 
-	cmd := exec.Command("/opt/homebrew/bin/lilypond", "--pdf", lyFile)
-	out, err := cmd.CombinedOutput()
-	t.Logf("LilyPond output: %s", string(out))
-	if err != nil {
-		t.Fatalf("LilyPond execution failed: %v", err)
+	if err := CompileLilyPondToPDF(lyFile, "."); err != nil {
+		t.Fatalf("CompileLilyPondToPDF failed: %v", err)
 	}
 
 	info, err := os.Stat("test_jordu.pdf")

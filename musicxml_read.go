@@ -12,12 +12,12 @@ import (
 
 // Raw MusicXML XML structures
 type xmlScorePartwise struct {
-	XMLName       xml.Name         `xml:"score-partwise"`
-	Work          xmlWork          `xml:"work"`
-	MovementTitle string           `xml:"movement-title"`
+	XMLName        xml.Name          `xml:"score-partwise"`
+	Work           xmlWork           `xml:"work"`
+	MovementTitle  string            `xml:"movement-title"`
 	Identification xmlIdentification `xml:"identification"`
-	PartList      xmlPartList      `xml:"part-list"`
-	Parts         []xmlPart        `xml:"part"`
+	PartList       xmlPartList       `xml:"part-list"`
+	Parts          []xmlPart         `xml:"part"`
 }
 
 type xmlWork struct {
@@ -43,13 +43,13 @@ type xmlScorePart struct {
 }
 
 type xmlPart struct {
-	ID       string           `xml:"id,attr"`
+	ID       string          `xml:"id,attr"`
 	Measures []xmlMeasureRaw `xml:"measure"`
 }
 
 type xmlMeasureRaw struct {
-	Number string   `xml:"number,attr"`
-	Inner  []byte   `xml:",innerxml"`
+	Number string `xml:"number,attr"`
+	Inner  []byte `xml:",innerxml"`
 }
 
 // Harmony XML struct
@@ -255,7 +255,7 @@ func ParseMusicXML(r io.Reader) (*Tune, error) {
 
 			case "note":
 				var n struct {
-					Duration int      `xml:"duration"`
+					Duration int       `xml:"duration"`
 					Chord    *xml.Name `xml:"chord"`
 					Rest     *xml.Name `xml:"rest"`
 				}

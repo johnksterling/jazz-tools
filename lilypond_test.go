@@ -7,9 +7,9 @@ import (
 )
 
 func TestLilyPondScoreGenerationAndCompile(t *testing.T) {
-	tune, err := ParseMusicXMLFile("Jordu.musicxml")
+	tune, err := ParseMusicXMLFile("testdata/Jordu.musicxml")
 	if err != nil {
-		t.Fatalf("Failed to parse Jordu.musicxml: %v", err)
+		t.Fatalf("Failed to parse testdata/Jordu.musicxml: %v", err)
 	}
 
 	lyStr, err := GenerateLilyPondScore(tune)
@@ -40,9 +40,9 @@ func TestLilyPondScoreGenerationAndCompile(t *testing.T) {
 
 func TestDetermineBarsPerLine(t *testing.T) {
 	tests := []struct {
-		name        string
-		measures    int
-		userBars    int
+		name         string
+		measures     int
+		userBars     int
 		expectedBars int
 	}{
 		{"empty tune", 0, 0, 8},

@@ -4,9 +4,9 @@ import "testing"
 
 func TestGuideToneExtraction(t *testing.T) {
 	tests := []struct {
-		symbol       string
-		expected3rd  string
-		expected7th  string
+		symbol      string
+		expected3rd string
+		expected7th string
 	}{
 		// Eb major 7th -> G, D
 		{"Ebmaj7", "G", "D"},

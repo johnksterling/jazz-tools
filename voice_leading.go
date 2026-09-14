@@ -4,7 +4,6 @@ import (
 	"math"
 )
 
-
 // abs returns the absolute value of an integer.
 func abs(n int) int {
 	if n < 0 {

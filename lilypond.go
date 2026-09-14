@@ -118,13 +118,13 @@ func DetermineBarsPerLine(tune *Tune, userBars int) int {
 		return 8
 	}
 
-	// For short forms (e.g. 12-bar blues, 16-bar tunes), 4 bars per line
-	// produces 3 or 4 balanced systems that fill the page vertically.
-	if numMeasures <= 16 {
+	// For tunes with up to 24 measures (e.g. 12-bar blues, 16-bar tunes, and 24-bar forms like Autumn Leaves),
+	// 4 bars per line produces 3 to 6 balanced systems that fit comfortably on 1 page.
+	if numMeasures <= 24 {
 		return 4
 	}
 
-	// For standard jazz forms, default to 8 measures per line.
+	// For standard jazz forms (> 24 bars), default to 8 measures per line.
 	// Maximum comfortable systems on a single page with chords and key badges is ~7.
 	maxSystems := 7
 	bars := 8
@@ -181,9 +181,14 @@ func GenerateLilyPondScoreWithConfig(tune *Tune, userBars int) (string, error) {
 	buf.WriteString("\\paper {\n")
 	buf.WriteString("  indent = 0\\mm\n")
 	buf.WriteString("  ragged-right = ##f\n")
-	buf.WriteString("  ragged-bottom = ##f\n")
-	buf.WriteString("  ragged-last-bottom = ##f\n")
+	buf.WriteString("  ragged-bottom = ##t\n")
+	buf.WriteString("  ragged-last-bottom = ##t\n")
 	buf.WriteString("  page-count = #1\n")
+	buf.WriteString("  system-system-spacing =\n")
+	buf.WriteString("    #'((basic-distance . 16)\n")
+	buf.WriteString("       (minimum-distance . 12)\n")
+	buf.WriteString("       (padding . 4)\n")
+	buf.WriteString("       (stretchability . 10))\n")
 	buf.WriteString("}\n\n")
 
 	// Header

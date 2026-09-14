@@ -139,6 +139,11 @@ func runAnalyze(tune *Tune) {
 }
 
 func runCompanion(tune *Tune, outputPath string, generatePDF bool, userBars int, cfg AnnotationConfig) {
+	tune.Title = strings.TrimSpace(tune.Title)
+	tune.Title = strings.TrimSuffix(tune.Title, "(Guide Tones: 3 & 7)")
+	tune.Title = strings.TrimSuffix(tune.Title, "(Guide Tones: 3 &amp; 7)")
+	tune.Title = strings.TrimSpace(tune.Title)
+
 	cleanTitle := strings.ReplaceAll(tune.Title, " ", "_")
 	reg := regexp.MustCompile(`[^a-zA-Z0-9_\-]`)
 	baseName := reg.ReplaceAllString(cleanTitle, "")
@@ -146,7 +151,15 @@ func runCompanion(tune *Tune, outputPath string, generatePDF bool, userBars int,
 		baseName = "tune"
 	}
 
-	if outputPath == "" {
+	if outputPath != "" {
+		fileBase := filepath.Base(outputPath)
+		ext := filepath.Ext(fileBase)
+		rawBase := strings.TrimSuffix(fileBase, ext)
+		rawBase = strings.TrimSuffix(rawBase, "_guide_tones")
+		if rawBase != "" {
+			baseName = rawBase
+		}
+	} else {
 		outputPath = baseName + "_guide_tones.musicxml"
 	}
 

@@ -187,7 +187,7 @@ func (p Pitch) AddInterval(degreeDelta int, semitoneDelta int) Pitch {
 	targetOctave := 0
 	if p.Octave > 0 {
 		targetMidi := p.MidiNumber() + semitoneDelta
-		targetOctave = (targetMidi - naturalSemitone(targetStep) - diff) / 12 - 1
+		targetOctave = (targetMidi-naturalSemitone(targetStep)-diff)/12 - 1
 	}
 
 	return Pitch{
@@ -272,4 +272,3 @@ func KeyToFifths(keyStr string) (int, string) {
 	}
 	return 0, mode
 }
-

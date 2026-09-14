@@ -7,9 +7,9 @@ import (
 )
 
 func TestGenerateMusicXMLGuideTones(t *testing.T) {
-	tune, err := ParseMusicXMLFile("Jordu.musicxml")
+	tune, err := ParseMusicXMLFile("testdata/Jordu.musicxml")
 	if err != nil {
-		t.Fatalf("Failed to parse Jordu.musicxml: %v", err)
+		t.Fatalf("Failed to parse testdata/Jordu.musicxml: %v", err)
 	}
 
 	xmlStr, err := GenerateMusicXMLGuideTones(tune)

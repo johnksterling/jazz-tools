@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -24,6 +25,7 @@ func printUsage() {
 	fmt.Println("Flags for companion:")
 	fmt.Println("  -o string    Output MusicXML path (default: <title>_guide_tones.musicxml)")
 	fmt.Println("  --pdf        Compile print-ready PDF via system LilyPond")
+	fmt.Println("  --bars int   Measures per line (default: auto - 4 for <= 16 bars, 8 for standard tunes, auto-scaled if longer)")
 	fmt.Println()
 }
 
@@ -128,8 +130,10 @@ func runAnalyze(tune *Tune) {
 	fmt.Println("=============================================================================================")
 }
 
-func runCompanion(tune *Tune, outputPath string, generatePDF bool) {
-	baseName := strings.ReplaceAll(tune.Title, " ", "_")
+func runCompanion(tune *Tune, outputPath string, generatePDF bool, userBars int) {
+	cleanTitle := strings.ReplaceAll(tune.Title, " ", "_")
+	reg := regexp.MustCompile(`[^a-zA-Z0-9_\-]`)
+	baseName := reg.ReplaceAllString(cleanTitle, "")
 	if baseName == "" {
 		baseName = "tune"
 	}
@@ -147,20 +151,21 @@ func runCompanion(tune *Tune, outputPath string, generatePDF bool) {
 	fmt.Printf("✓ Created MusicXML companion sheet: %s\n", outputPath)
 
 	if generatePDF {
-		lyStr, err := GenerateLilyPondScore(tune)
+		lyStr, err := GenerateLilyPondScoreWithConfig(tune, userBars)
 		if err != nil {
 			fmt.Printf("Error generating LilyPond score: %v\n", err)
 			return
 		}
 
-		lyFile := baseName + "_guide_tones.ly"
+		outDir := filepath.Dir(outputPath)
+		lyFile := filepath.Join(outDir, baseName+"_guide_tones.ly")
 		if err := os.WriteFile(lyFile, []byte(lyStr), 0644); err != nil {
 			fmt.Printf("Error saving LilyPond file: %v\n", err)
 			return
 		}
 
-		pdfFile := baseName + "_guide_tones.pdf"
-		cmdErr := CompileLilyPondToPDF(lyFile, ".")
+		pdfFile := filepath.Join(outDir, baseName+"_guide_tones.pdf")
+		cmdErr := CompileLilyPondToPDF(lyFile, outDir)
 		if cmdErr != nil {
 			fmt.Printf("Error running LilyPond: %v\n", cmdErr)
 		} else {
@@ -186,10 +191,11 @@ func main() {
 		compCmd := flag.NewFlagSet("companion", flag.ExitOnError)
 		outFile := compCmd.String("o", "", "Output MusicXML file path")
 		pdfFlag := compCmd.Bool("pdf", false, "Compile PDF using LilyPond")
+		barsFlag := compCmd.Int("bars", 0, "Target measures per line (default: auto)")
 
 		if len(os.Args) < 3 {
 			fmt.Println("Error: please provide a MusicXML file or iReal Pro URL.")
-			fmt.Println("Usage: jazz-tools companion <file.musicxml | irealb://...> [-o out.musicxml] [--pdf]")
+			fmt.Println("Usage: jazz-tools companion <file.musicxml | irealb://...> [-o out.musicxml] [--pdf] [--bars N]")
 			os.Exit(1)
 		}
 
@@ -202,7 +208,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		runCompanion(tune, *outFile, *pdfFlag)
+		runCompanion(tune, *outFile, *pdfFlag, *barsFlag)
 
 	case "analyze":
 		if len(os.Args) < 3 {

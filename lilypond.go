@@ -107,8 +107,49 @@ func lilypondChordName(c Chord, beats float64) string {
 	return stepChar + acc + dur + qual
 }
 
-// GenerateLilyPondScore generates a complete LilyPond score file for printing companion sheet music.
+// DetermineBarsPerLine calculates the optimal measures per line to fit the tune on 1 page.
+func DetermineBarsPerLine(tune *Tune, userBars int) int {
+	if userBars > 0 {
+		return userBars
+	}
+
+	numMeasures := len(tune.Measures)
+	if numMeasures == 0 {
+		return 8
+	}
+
+	// For tunes with up to 24 measures (e.g. 12-bar blues, 16-bar tunes, and 24-bar forms like Autumn Leaves),
+	// 4 bars per line produces 3 to 6 balanced systems that fit comfortably on 1 page.
+	if numMeasures <= 24 {
+		return 4
+	}
+
+	// For standard jazz forms (> 24 bars), default to 8 measures per line.
+	// Maximum comfortable systems on a single page with chords and key badges is ~7.
+	maxSystems := 7
+	bars := 8
+
+	// If 8 bars per line would exceed maxSystems (causing more than 1 page),
+	// increase bars per line to fit on a single page.
+	systems := (numMeasures + bars - 1) / bars
+	if systems > maxSystems {
+		needed := (numMeasures + maxSystems - 1) / maxSystems
+		if needed%2 != 0 {
+			needed++
+		}
+		bars = needed
+	}
+
+	return bars
+}
+
+// GenerateLilyPondScore generates a complete LilyPond score file for printing companion sheet music using auto-layout.
 func GenerateLilyPondScore(tune *Tune) (string, error) {
+	return GenerateLilyPondScoreWithConfig(tune, 0)
+}
+
+// GenerateLilyPondScoreWithConfig generates a complete LilyPond score file with a configurable measures-per-line setting.
+func GenerateLilyPondScoreWithConfig(tune *Tune, userBars int) (string, error) {
 	// Run tonal center analysis
 	AnalyzeTonalCenters(tune)
 
@@ -140,6 +181,14 @@ func GenerateLilyPondScore(tune *Tune) (string, error) {
 	buf.WriteString("\\paper {\n")
 	buf.WriteString("  indent = 0\\mm\n")
 	buf.WriteString("  ragged-right = ##f\n")
+	buf.WriteString("  ragged-bottom = ##t\n")
+	buf.WriteString("  ragged-last-bottom = ##t\n")
+	buf.WriteString("  page-count = #1\n")
+	buf.WriteString("  system-system-spacing =\n")
+	buf.WriteString("    #'((basic-distance . 16)\n")
+	buf.WriteString("       (minimum-distance . 12)\n")
+	buf.WriteString("       (padding . 4)\n")
+	buf.WriteString("       (stretchability . 10))\n")
 	buf.WriteString("}\n\n")
 
 	// Header
@@ -160,15 +209,23 @@ func GenerateLilyPondScore(tune *Tune) (string, error) {
 	var upperBuf bytes.Buffer
 	var lowerBuf bytes.Buffer
 
-	for _, m := range tune.Measures {
+	barsPerLine := DetermineBarsPerLine(tune, userBars)
+
+	for mIdx, m := range tune.Measures {
 		beats := float64(m.TimeBeats)
 		if beats == 0 {
 			beats = 4.0
 		}
 
+		isLineBreak := barsPerLine > 0 && (mIdx+1)%barsPerLine == 0 && mIdx < len(tune.Measures)-1
+		breakSuffix := ""
+		if isLineBreak {
+			breakSuffix = " \\break"
+		}
+
 		if len(m.Chords) == 0 {
 			chordBuf.WriteString(fmt.Sprintf("  r%s |\n", lilypondDuration(beats)))
-			upperBuf.WriteString(fmt.Sprintf("  R%s |\n", lilypondDuration(beats)))
+			upperBuf.WriteString(fmt.Sprintf("  R%s |%s\n", lilypondDuration(beats), breakSuffix))
 			lowerBuf.WriteString(fmt.Sprintf("  R%s |\n", lilypondDuration(beats)))
 		} else {
 			// Chords
@@ -216,7 +273,7 @@ func GenerateLilyPondScore(tune *Tune) (string, error) {
 			if v1Pos < beats {
 				upperBuf.WriteString(fmt.Sprintf("r%s ", lilypondDuration(beats-v1Pos)))
 			}
-			upperBuf.WriteString("|\n")
+			upperBuf.WriteString(fmt.Sprintf("|%s\n", breakSuffix))
 
 			// Voice 2
 			v2Pos := 0.0

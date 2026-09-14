@@ -23,9 +23,12 @@ func printUsage() {
 	fmt.Println("  analyze      Display tune structure, timing, chord progression, and guide tones.")
 	fmt.Println()
 	fmt.Println("Flags for companion:")
-	fmt.Println("  -o string    Output MusicXML path (default: <title>_guide_tones.musicxml)")
-	fmt.Println("  --pdf        Compile print-ready PDF via system LilyPond")
-	fmt.Println("  --bars int   Measures per line (default: auto - 4 for <= 16 bars, 8 for standard tunes, auto-scaled if longer)")
+	fmt.Println("  -o string            Output MusicXML path (default: <title>_guide_tones.musicxml)")
+	fmt.Println("  --pdf                Compile print-ready PDF via system LilyPond")
+	fmt.Println("  --bars int           Measures per line (default: auto - 4 for <= 16 bars, 8 for standard tunes, auto-scaled if longer)")
+	fmt.Println("  --annotations string Annotations to include: all, none, keys, devices (comma-separated, default: all)")
+	fmt.Println("  --keys / --no-keys   Include / omit tonal center key badges")
+	fmt.Println("  --devices / --no-devices Include / omit Berklee harmonic device brackets (ii-V, etc.)")
 	fmt.Println()
 }
 
@@ -66,27 +69,32 @@ func loadTune(target string) (*Tune, error) {
 		return tunes[0], nil
 	}
 
-	// Default to MusicXML parser
-	return ParseMusicXML(strings.NewReader(contentStr))
+	if ext == ".musicxml" || ext == ".xml" {
+		return ParseMusicXMLFile(target)
+	}
+
+	return nil, fmt.Errorf("unrecognized file format or content in %s", target)
 }
 
 func runAnalyze(tune *Tune) {
-	fmt.Println("==================================================")
-	fmt.Println("               JAZZ TUNE ANALYSIS                 ")
-	fmt.Println("==================================================")
-	if tune.Title != "" {
-		fmt.Printf("Title:       %s\n", tune.Title)
-	}
+	fmt.Println("=============================================================================================")
+	fmt.Printf("Tune: %s", tune.Title)
 	if tune.Composer != "" {
-		fmt.Printf("Composer:    %s\n", tune.Composer)
+		fmt.Printf(" by %s", tune.Composer)
 	}
-	fmt.Printf("Key:         %s\n", tune.KeyName())
-	fmt.Printf("Time Sig:    %d/%d\n", tune.TimeSignature[0], tune.TimeSignature[1])
-	fmt.Printf("Measures:    %d\n", len(tune.Measures))
+	fmt.Println()
+	if tune.Key != "" {
+		fmt.Printf("Key: %s | Time Signature: %d/%d | Measures: %d\n", tune.Key, tune.TimeSignature[0], tune.TimeSignature[1], len(tune.Measures))
+	} else {
+		fmt.Printf("Time Signature: %d/%d | Measures: %d\n", tune.TimeSignature[0], tune.TimeSignature[1], len(tune.Measures))
+	}
+	fmt.Println("---------------------------------------------------------------------------------------------")
 
 	allChords := tune.AllChords()
-	fmt.Printf("Chords:      %d\n", len(allChords))
-	fmt.Println("--------------------------------------------------")
+	if len(allChords) == 0 {
+		fmt.Println("No chords found in tune.")
+		return
+	}
 
 	pairs, err := VoiceLeadChords(allChords)
 	if err != nil {
@@ -130,7 +138,7 @@ func runAnalyze(tune *Tune) {
 	fmt.Println("=============================================================================================")
 }
 
-func runCompanion(tune *Tune, outputPath string, generatePDF bool, userBars int) {
+func runCompanion(tune *Tune, outputPath string, generatePDF bool, userBars int, cfg AnnotationConfig) {
 	cleanTitle := strings.ReplaceAll(tune.Title, " ", "_")
 	reg := regexp.MustCompile(`[^a-zA-Z0-9_\-]`)
 	baseName := reg.ReplaceAllString(cleanTitle, "")
@@ -151,7 +159,7 @@ func runCompanion(tune *Tune, outputPath string, generatePDF bool, userBars int)
 	fmt.Printf("✓ Created MusicXML companion sheet: %s\n", outputPath)
 
 	if generatePDF {
-		lyStr, err := GenerateLilyPondScoreWithConfig(tune, userBars)
+		lyStr, err := GenerateLilyPondScoreWithAnnotationConfig(tune, userBars, cfg)
 		if err != nil {
 			fmt.Printf("Error generating LilyPond score: %v\n", err)
 			return
@@ -192,6 +200,11 @@ func main() {
 		outFile := compCmd.String("o", "", "Output MusicXML file path")
 		pdfFlag := compCmd.Bool("pdf", false, "Compile PDF using LilyPond")
 		barsFlag := compCmd.Int("bars", 0, "Target measures per line (default: auto)")
+		annotationsFlag := compCmd.String("annotations", "all", "Annotations to include: all, none, keys, devices (comma-separated)")
+		keysFlag := compCmd.Bool("keys", true, "Include key center annotations")
+		noKeysFlag := compCmd.Bool("no-keys", false, "Omit key center annotations")
+		devicesFlag := compCmd.Bool("devices", true, "Include harmonic device annotations")
+		noDevicesFlag := compCmd.Bool("no-devices", false, "Omit harmonic device annotations")
 
 		if len(os.Args) < 3 {
 			fmt.Println("Error: please provide a MusicXML file or iReal Pro URL.")
@@ -208,7 +221,50 @@ func main() {
 			os.Exit(1)
 		}
 
-		runCompanion(tune, *outFile, *pdfFlag, *barsFlag)
+		cfg := DefaultAnnotationConfig()
+
+		explicitFlags := make(map[string]bool)
+		compCmd.Visit(func(f *flag.Flag) {
+			explicitFlags[f.Name] = true
+		})
+
+		if explicitFlags["annotations"] && *annotationsFlag != "" {
+			ann := strings.ToLower(strings.TrimSpace(*annotationsFlag))
+			if ann == "none" {
+				cfg.ShowKeys = false
+				cfg.ShowDevices = false
+			} else if ann == "all" {
+				cfg.ShowKeys = true
+				cfg.ShowDevices = true
+			} else {
+				cfg.ShowKeys = false
+				cfg.ShowDevices = false
+				parts := strings.Split(ann, ",")
+				for _, p := range parts {
+					p = strings.TrimSpace(p)
+					if p == "keys" || p == "key" {
+						cfg.ShowKeys = true
+					} else if p == "devices" || p == "device" {
+						cfg.ShowDevices = true
+					}
+				}
+			}
+		}
+
+		if explicitFlags["keys"] {
+			cfg.ShowKeys = *keysFlag
+		}
+		if explicitFlags["no-keys"] && *noKeysFlag {
+			cfg.ShowKeys = false
+		}
+		if explicitFlags["devices"] {
+			cfg.ShowDevices = *devicesFlag
+		}
+		if explicitFlags["no-devices"] && *noDevicesFlag {
+			cfg.ShowDevices = false
+		}
+
+		runCompanion(tune, *outFile, *pdfFlag, *barsFlag, cfg)
 
 	case "analyze":
 		if len(os.Args) < 3 {

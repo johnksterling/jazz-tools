@@ -143,6 +143,20 @@ func DetermineBarsPerLine(tune *Tune, userBars int) int {
 	return bars
 }
 
+// AnnotationConfig controls which companion sheet annotations are rendered.
+type AnnotationConfig struct {
+	ShowKeys    bool // Tonal center badge at start of contiguous section
+	ShowDevices bool // Berklee-style harmonic devices (ii-V brackets, arrows, etc.)
+}
+
+// DefaultAnnotationConfig returns the default configuration with all annotations enabled.
+func DefaultAnnotationConfig() AnnotationConfig {
+	return AnnotationConfig{
+		ShowKeys:    true,
+		ShowDevices: true,
+	}
+}
+
 // GenerateLilyPondScore generates a complete LilyPond score file for printing companion sheet music using auto-layout.
 func GenerateLilyPondScore(tune *Tune) (string, error) {
 	return GenerateLilyPondScoreWithConfig(tune, 0)
@@ -150,6 +164,11 @@ func GenerateLilyPondScore(tune *Tune) (string, error) {
 
 // GenerateLilyPondScoreWithConfig generates a complete LilyPond score file with a configurable measures-per-line setting.
 func GenerateLilyPondScoreWithConfig(tune *Tune, userBars int) (string, error) {
+	return GenerateLilyPondScoreWithAnnotationConfig(tune, userBars, DefaultAnnotationConfig())
+}
+
+// GenerateLilyPondScoreWithAnnotationConfig generates a complete LilyPond score file with configurable line layout and annotations.
+func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg AnnotationConfig) (string, error) {
 	// Run tonal center analysis
 	AnalyzeTonalCenters(tune)
 
@@ -204,12 +223,24 @@ func GenerateLilyPondScoreWithConfig(tune *Tune, userBars int) (string, error) {
 	}
 	buf.WriteString("}\n\n")
 
+	// Detect harmonic devices if requested
+	var devices []HarmonicDevice
+	if cfg.ShowDevices {
+		devices = DetectHarmonicDevices(tune)
+	}
+
+	barsPerLine := DetermineBarsPerLine(tune, userBars)
+
+	if len(devices) > 0 {
+		buf.WriteString("deviceAnnotations = {\n")
+		buf.WriteString(generateDevicesTrack(tune, devices, barsPerLine))
+		buf.WriteString("}\n\n")
+	}
+
 	// Generate Chord Names
 	var chordBuf bytes.Buffer
 	var upperBuf bytes.Buffer
 	var lowerBuf bytes.Buffer
-
-	barsPerLine := DetermineBarsPerLine(tune, userBars)
 
 	for mIdx, m := range tune.Measures {
 		beats := float64(m.TimeBeats)
@@ -264,7 +295,7 @@ func GenerateLilyPondScoreWithConfig(tune *Tune, userBars int) (string, error) {
 					colorPrefix = fmt.Sprintf("\\tweak color #%s ", tc.TonalCenterColor)
 				}
 				markupSuffix := ""
-				if tc.IsTonalCenterChange && tc.TonalCenter != "" {
+				if cfg.ShowKeys && tc.IsTonalCenterChange && tc.TonalCenter != "" {
 					markupSuffix = fmt.Sprintf("^\\markup { \\with-color #%s \\rounded-box \\bold \\fontsize #-2 \"Key: %s\" }", tc.TonalCenterColor, tc.TonalCenter)
 				}
 				upperBuf.WriteString(fmt.Sprintf("%s%s%s%s ", colorPrefix, lilypondPitch(p), lilypondDuration(dur), markupSuffix))
@@ -330,6 +361,9 @@ func GenerateLilyPondScoreWithConfig(tune *Tune, userBars int) (string, error) {
 
 	buf.WriteString("\\score {\n")
 	buf.WriteString("  <<\n")
+	if len(devices) > 0 {
+		buf.WriteString("    \\new Dynamics { \\deviceAnnotations }\n")
+	}
 	buf.WriteString("    \\new ChordNames { \\theChords }\n")
 	buf.WriteString("    \\new Staff {\n")
 	buf.WriteString("      \\clef treble\n")
@@ -345,6 +379,163 @@ func GenerateLilyPondScoreWithConfig(tune *Tune, userBars int) (string, error) {
 	buf.WriteString("}\n")
 
 	return buf.String(), nil
+}
+
+// generateDevicesTrack generates a LilyPond Dynamics voice with TextSpanner brackets for detected devices.
+func generateDevicesTrack(tune *Tune, devices []HarmonicDevice, barsPerLine int) string {
+	var buf bytes.Buffer
+	buf.WriteString("  \\override TextSpanner.direction = #UP\n")
+	buf.WriteString("  \\override TextSpanner.outside-staff-priority = ##f\n")
+
+	keyForPos := func(mIdx int, beat float64) string {
+		return fmt.Sprintf("%d:%.2f", mIdx, beat)
+	}
+
+	stopsAt := make(map[string][]HarmonicDevice)
+	startsAt := make(map[string][]HarmonicDevice)
+
+	for _, d := range devices {
+		stopsAt[keyForPos(d.EndMeasure, d.EndBeat)] = append(stopsAt[keyForPos(d.EndMeasure, d.EndBeat)], d)
+		startsAt[keyForPos(d.StartMeasure, d.StartBeat)] = append(startsAt[keyForPos(d.StartMeasure, d.StartBeat)], d)
+	}
+
+	activeSpanner := false
+
+	for mIdx, m := range tune.Measures {
+		beats := float64(m.TimeBeats)
+		if beats == 0 {
+			beats = 4.0
+		}
+
+		isLineBreak := barsPerLine > 0 && (mIdx+1)%barsPerLine == 0 && mIdx < len(tune.Measures)-1
+		breakSuffix := ""
+		if isLineBreak {
+			breakSuffix = " \\break"
+		}
+
+		buf.WriteString("  ")
+
+		if len(m.Chords) == 0 {
+			stopDevs := stopsAt[keyForPos(mIdx, 0.0)]
+			startDevs := startsAt[keyForPos(mIdx, 0.0)]
+
+			shouldStop := activeSpanner && len(stopDevs) > 0
+			shouldStart := len(startDevs) > 0
+
+			if shouldStop && shouldStart {
+				d := startDevs[0]
+				writeSpannerOverrides(&buf, d)
+				mult := int(beats*4.0 - 1)
+				if mult < 1 {
+					mult = 1
+				}
+				buf.WriteString(fmt.Sprintf("s16\\stopTextSpan s16*%d\\startTextSpan |%s\n", mult, breakSuffix))
+				activeSpanner = true
+			} else if shouldStop {
+				buf.WriteString(fmt.Sprintf("s%s\\stopTextSpan |%s\n", lilypondDuration(beats), breakSuffix))
+				activeSpanner = false
+			} else if shouldStart {
+				d := startDevs[0]
+				writeSpannerOverrides(&buf, d)
+				buf.WriteString(fmt.Sprintf("s%s\\startTextSpan |%s\n", lilypondDuration(beats), breakSuffix))
+				activeSpanner = true
+			} else {
+				buf.WriteString(fmt.Sprintf("s%s |%s\n", lilypondDuration(beats), breakSuffix))
+			}
+			continue
+		}
+
+		cPos := 0.0
+		for _, tc := range m.Chords {
+			if tc.BeatOffset > cPos {
+				gap := tc.BeatOffset - cPos
+				buf.WriteString(fmt.Sprintf("s%s ", lilypondDuration(gap)))
+				cPos += gap
+			}
+
+			stopDevs := stopsAt[keyForPos(mIdx, tc.BeatOffset)]
+			startDevs := startsAt[keyForPos(mIdx, tc.BeatOffset)]
+			dur := tc.DurationBeats
+
+			shouldStop := activeSpanner && len(stopDevs) > 0
+			shouldStart := len(startDevs) > 0
+
+			if shouldStop && shouldStart {
+				d := startDevs[0]
+				writeSpannerOverrides(&buf, d)
+				mult := int(dur*4.0 - 1)
+				if mult < 1 {
+					mult = 1
+				}
+				buf.WriteString(fmt.Sprintf("s16\\stopTextSpan s16*%d\\startTextSpan ", mult))
+				activeSpanner = true
+			} else if shouldStop {
+				buf.WriteString(fmt.Sprintf("s%s\\stopTextSpan ", lilypondDuration(dur)))
+				activeSpanner = false
+			} else if shouldStart {
+				d := startDevs[0]
+				writeSpannerOverrides(&buf, d)
+				// Check if this same chord also stops the device at its end
+				if len(stopsAt[keyForPos(mIdx, tc.BeatOffset+dur)]) > 0 {
+					mult := int(dur*4.0 - 1)
+					if mult < 1 {
+						buf.WriteString(fmt.Sprintf("s%s\\startTextSpan\\stopTextSpan ", lilypondDuration(dur)))
+					} else {
+						buf.WriteString(fmt.Sprintf("s16*%d\\startTextSpan s16\\stopTextSpan ", mult))
+					}
+					activeSpanner = false
+				} else {
+					buf.WriteString(fmt.Sprintf("s%s\\startTextSpan ", lilypondDuration(dur)))
+					activeSpanner = true
+				}
+			} else if activeSpanner && len(stopsAt[keyForPos(mIdx, tc.BeatOffset+dur)]) > 0 {
+				mult := int(dur*4.0 - 1)
+				if mult < 1 {
+					buf.WriteString(fmt.Sprintf("s%s\\stopTextSpan ", lilypondDuration(dur)))
+				} else {
+					buf.WriteString(fmt.Sprintf("s16*%d s16\\stopTextSpan ", mult))
+				}
+				activeSpanner = false
+			} else {
+				buf.WriteString(fmt.Sprintf("s%s ", lilypondDuration(dur)))
+			}
+			cPos += dur
+		}
+
+		if cPos < beats {
+			buf.WriteString(fmt.Sprintf("s%s ", lilypondDuration(beats-cPos)))
+		}
+		buf.WriteString(fmt.Sprintf("|%s\n", breakSuffix))
+	}
+
+	return buf.String()
+}
+
+// writeSpannerOverrides writes the LilyPond property overrides for a device's TextSpanner.
+func writeSpannerOverrides(buf *bytes.Buffer, d HarmonicDevice) {
+	color := d.LilyPondColor
+	if color == "" {
+		color = "(rgb-color 0.85 0.47 0.02)"
+	}
+	buf.WriteString(fmt.Sprintf("\\override TextSpanner.color = #%s ", color))
+	buf.WriteString("\\override TextSpanner.thickness = #1.5 ")
+	buf.WriteString("\\override TextSpanner.bound-details.left.stencil-align-dir-y = #CENTER ")
+	buf.WriteString("\\override TextSpanner.bound-details.left-broken.text = ##f ")
+	buf.WriteString(fmt.Sprintf("\\override TextSpanner.bound-details.left.text = \\markup { \\rounded-box \\pad-markup #0.2 \\with-color #%s \\bold \\fontsize #-3 \"%s\" } ", color, d.Label))
+	if d.Resolves {
+		buf.WriteString("\\override TextSpanner.bound-details.right.arrow = ##t ")
+		buf.WriteString("\\override TextSpanner.bound-details.right.text = ##f ")
+		buf.WriteString("\\override TextSpanner.bound-details.right.padding = #1.0 ")
+	} else {
+		buf.WriteString("\\override TextSpanner.bound-details.right.arrow = ##f ")
+		buf.WriteString("\\override TextSpanner.bound-details.right.text = \\markup { \\draw-line #'(0 . -0.8) } ")
+		buf.WriteString("\\override TextSpanner.bound-details.right.padding = #0.5 ")
+	}
+	if d.IsDashed {
+		buf.WriteString("\\override TextSpanner.style = #'dashed-line ")
+	} else {
+		buf.WriteString("\\override TextSpanner.style = #'solid ")
+	}
 }
 
 // fifthsToLilyPondKey maps circle of fifths and mode to LilyPond key syntax.

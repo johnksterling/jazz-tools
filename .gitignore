@@ -14,6 +14,7 @@ main
 *.ly
 *.pdf
 *.png
+!assets/*.png
 *_guide_tones.*
 test_jordu.*
 

@@ -1,7 +1,5 @@
 package main
 
-
-
 // GuideTonePair holds the assigned upper and lower voice pitches for a chord.
 type GuideTonePair struct {
 	Chord  Chord // Associated chord
@@ -67,5 +65,3 @@ func (t *Tune) KeyName() string {
 	}
 	return "C major"
 }
-
-

@@ -93,9 +93,9 @@ func TestTonalCenterDetectionWaltzForDebby(t *testing.T) {
 }
 
 func TestTonalCenterDetectionJordu(t *testing.T) {
-	tune, err := ParseMusicXMLFile("Jordu.musicxml")
+	tune, err := ParseMusicXMLFile("testdata/Jordu.musicxml")
 	if err != nil {
-		t.Fatalf("failed to parse Jordu: %v", err)
+		t.Fatalf("failed to parse testdata/Jordu.musicxml: %v", err)
 	}
 
 	AnalyzeTonalCenters(tune)

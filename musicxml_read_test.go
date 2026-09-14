@@ -5,9 +5,9 @@ import (
 )
 
 func TestParseJorduMusicXML(t *testing.T) {
-	tune, err := ParseMusicXMLFile("Jordu.musicxml")
+	tune, err := ParseMusicXMLFile("testdata/Jordu.musicxml")
 	if err != nil {
-		t.Fatalf("Failed to parse Jordu.musicxml: %v", err)
+		t.Fatalf("Failed to parse testdata/Jordu.musicxml: %v", err)
 	}
 
 	t.Logf("Parsed Tune: %s by %s, Key: %s, Measures: %d",

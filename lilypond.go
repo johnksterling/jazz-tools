@@ -149,10 +149,10 @@ type AnnotationConfig struct {
 	ShowDevices bool // Berklee-style harmonic devices (ii-V brackets, arrows, etc.)
 }
 
-// DefaultAnnotationConfig returns the default configuration with all annotations enabled.
+// DefaultAnnotationConfig returns the default configuration with harmonic devices enabled and key badges disabled.
 func DefaultAnnotationConfig() AnnotationConfig {
 	return AnnotationConfig{
-		ShowKeys:    true,
+		ShowKeys:    false,
 		ShowDevices: true,
 	}
 }
@@ -296,7 +296,7 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 				}
 				markupSuffix := ""
 				if cfg.ShowKeys && tc.IsTonalCenterChange && tc.TonalCenter != "" {
-					markupSuffix = fmt.Sprintf("^\\markup { \\with-color #%s \\rounded-box \\bold \\fontsize #-2 \"Key: %s\" }", tc.TonalCenterColor, tc.TonalCenter)
+					markupSuffix = fmt.Sprintf("^\\markup { \\with-color #%s \\rounded-box \\bold \\fontsize #-2 \"%s\" }", tc.TonalCenterColor, tc.TonalCenter)
 				}
 				upperBuf.WriteString(fmt.Sprintf("%s%s%s%s ", colorPrefix, lilypondPitch(p), lilypondDuration(dur), markupSuffix))
 				v1Pos += dur

@@ -1,5 +1,5 @@
 # Binaries
-jazz-tools
+/jazz-tools
 main
 *.exe
 *.test
@@ -20,3 +20,7 @@ test_jordu.*
 
 # Sensitive files
 pat.txt
+
+# Web frontend
+web/node_modules/
+

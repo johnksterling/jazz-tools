@@ -42,7 +42,7 @@ jobs:
         run: go test -v -race ./...
 
       - name: Build Binary
-        run: go build -v -o jazz-tools .
+        run: go build -v -o jazz-tools ./cmd/jazz-tools
 
       - name: CLI Smoke Tests
         run: |

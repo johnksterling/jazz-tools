@@ -1,4 +1,4 @@
-package main
+package jazz
 
 // GuideTonePair holds the assigned upper and lower voice pitches for a chord.
 type GuideTonePair struct {

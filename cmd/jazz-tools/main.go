@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"jazz-tools/internal/jazz"
 )
 
 func printUsage() {
@@ -32,51 +34,7 @@ func printUsage() {
 	fmt.Println()
 }
 
-// loadTune loads a tune from either a MusicXML file or an iReal Pro URL / file.
-func loadTune(target string) (*Tune, error) {
-	if strings.HasPrefix(target, "irealb://") || strings.HasPrefix(target, "irealbook://") {
-		tunes, err := ParseIRealURL(target)
-		if err != nil {
-			return nil, err
-		}
-		return tunes[0], nil
-	}
-
-	// Check if file exists
-	if _, err := os.Stat(target); err != nil {
-		return nil, fmt.Errorf("file not found: %s", target)
-	}
-
-	content, err := os.ReadFile(target)
-	if err != nil {
-		return nil, err
-	}
-
-	contentStr := string(content)
-	if strings.Contains(contentStr, "irealb://") || strings.Contains(contentStr, "irealbook://") {
-		tunes, err := ParseIRealURL(contentStr)
-		if err == nil && len(tunes) > 0 {
-			return tunes[0], nil
-		}
-	}
-
-	ext := strings.ToLower(filepath.Ext(target))
-	if ext == ".html" || ext == ".htm" {
-		tunes, err := ParseIRealURL(contentStr)
-		if err != nil {
-			return nil, err
-		}
-		return tunes[0], nil
-	}
-
-	if ext == ".musicxml" || ext == ".xml" {
-		return ParseMusicXMLFile(target)
-	}
-
-	return nil, fmt.Errorf("unrecognized file format or content in %s", target)
-}
-
-func runAnalyze(tune *Tune) {
+func runAnalyze(tune *jazz.Tune) {
 	fmt.Println("=============================================================================================")
 	fmt.Printf("Tune: %s", tune.Title)
 	if tune.Composer != "" {
@@ -96,14 +54,14 @@ func runAnalyze(tune *Tune) {
 		return
 	}
 
-	pairs, err := VoiceLeadChords(allChords)
+	pairs, err := jazz.VoiceLeadChords(allChords)
 	if err != nil {
 		fmt.Printf("Error calculating guide tones: %v\n", err)
 		return
 	}
 
 	// Run tonal center analysis
-	AnalyzeTonalCenters(tune)
+	jazz.AnalyzeTonalCenters(tune)
 
 	fmt.Println("Measure | Beat | Chord         | Hold (beats) | Voice 1 (3/7) | Voice 2 (3/7) | Tonal Center")
 	fmt.Println("--------+------+---------------+--------------+---------------+---------------+-------------")
@@ -111,12 +69,12 @@ func runAnalyze(tune *Tune) {
 	pairIdx := 0
 	for _, m := range tune.Measures {
 		for _, tc := range m.Chords {
-			var p GuideTonePair
+			var p jazz.GuideTonePair
 			if pairIdx < len(pairs) {
 				p = pairs[pairIdx]
 				pairIdx++
 			}
-			tcInfo := GetTonalCenterInfo(tc.TonalCenter)
+			tcInfo := jazz.GetTonalCenterInfo(tc.TonalCenter)
 			coloredCenter := fmt.Sprintf("%s%-11s\033[0m", tcInfo.AnsiColor, tc.TonalCenter)
 			fmt.Printf(" %5d  | %4.1f | %-13s | %12.1f | %-13s | %-13s | %s\n",
 				m.Number,
@@ -130,7 +88,7 @@ func runAnalyze(tune *Tune) {
 		}
 	}
 	fmt.Println("---------------------------------------------------------------------------------------------")
-	journey := HarmonicJourney(tune)
+	journey := jazz.HarmonicJourney(tune)
 	if journey != "" {
 		fmt.Println("Harmonic Journey:")
 		fmt.Printf("  %s\n", journey)
@@ -138,7 +96,7 @@ func runAnalyze(tune *Tune) {
 	fmt.Println("=============================================================================================")
 }
 
-func runCompanion(tune *Tune, outputPath string, generatePDF bool, userBars int, cfg AnnotationConfig) {
+func runCompanion(tune *jazz.Tune, outputPath string, generatePDF bool, userBars int, cfg jazz.AnnotationConfig) {
 	tune.Title = strings.TrimSpace(tune.Title)
 	tune.Title = strings.TrimSuffix(tune.Title, "(Guide Tones: 3 & 7)")
 	tune.Title = strings.TrimSuffix(tune.Title, "(Guide Tones: 3 &amp; 7)")
@@ -163,7 +121,7 @@ func runCompanion(tune *Tune, outputPath string, generatePDF bool, userBars int,
 		outputPath = baseName + "_guide_tones.musicxml"
 	}
 
-	err := WriteMusicXMLGuideTones(tune, outputPath)
+	err := jazz.WriteMusicXMLGuideTones(tune, outputPath)
 	if err != nil {
 		fmt.Printf("Error writing companion MusicXML: %v\n", err)
 		os.Exit(1)
@@ -172,7 +130,7 @@ func runCompanion(tune *Tune, outputPath string, generatePDF bool, userBars int,
 	fmt.Printf("✓ Created MusicXML companion sheet: %s\n", outputPath)
 
 	if generatePDF {
-		lyStr, err := GenerateLilyPondScoreWithAnnotationConfig(tune, userBars, cfg)
+		lyStr, err := jazz.GenerateLilyPondScoreWithAnnotationConfig(tune, userBars, cfg)
 		if err != nil {
 			fmt.Printf("Error generating LilyPond score: %v\n", err)
 			return
@@ -186,7 +144,7 @@ func runCompanion(tune *Tune, outputPath string, generatePDF bool, userBars int,
 		}
 
 		pdfFile := filepath.Join(outDir, baseName+"_guide_tones.pdf")
-		cmdErr := CompileLilyPondToPDF(lyFile, outDir)
+		cmdErr := jazz.CompileLilyPondToPDF(lyFile, outDir)
 		if cmdErr != nil {
 			fmt.Printf("Error running LilyPond: %v\n", cmdErr)
 		} else {
@@ -228,13 +186,13 @@ func main() {
 		target := os.Args[2]
 		compCmd.Parse(os.Args[3:])
 
-		tune, err := loadTune(target)
+		tune, err := jazz.LoadTune(target)
 		if err != nil {
 			fmt.Printf("Error loading tune: %v\n", err)
 			os.Exit(1)
 		}
 
-		cfg := DefaultAnnotationConfig()
+		cfg := jazz.DefaultAnnotationConfig()
 
 		explicitFlags := make(map[string]bool)
 		compCmd.Visit(func(f *flag.Flag) {
@@ -286,7 +244,7 @@ func main() {
 			os.Exit(1)
 		}
 		target := os.Args[2]
-		tune, err := loadTune(target)
+		tune, err := jazz.LoadTune(target)
 		if err != nil {
 			fmt.Printf("Error loading tune: %v\n", err)
 			os.Exit(1)
@@ -296,7 +254,7 @@ func main() {
 	default:
 		// Direct file argument without explicit subcommand
 		target := os.Args[1]
-		tune, err := loadTune(target)
+		tune, err := jazz.LoadTune(target)
 		if err != nil {
 			fmt.Printf("Error loading tune %s: %v\n", target, err)
 			os.Exit(1)

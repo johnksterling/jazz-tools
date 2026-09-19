@@ -415,13 +415,17 @@ func AnalyzeTonalCenters(tune *Tune) {
 	}
 }
 
-// HarmonicJourney formats a readable trajectory of tonal centers across the tune.
-func HarmonicJourney(tune *Tune) string {
-	var spans []struct {
-		Center   string
-		StartBar int
-		EndBar   int
-	}
+// JourneySpan describes a continuous tonal center span across measures.
+type JourneySpan struct {
+	Center   string `json:"center"`
+	StartBar int    `json:"startBar"`
+	EndBar   int    `json:"endBar"`
+	ColorHex string `json:"colorHex"`
+}
+
+// GetHarmonicJourneySpans extracts all tonal center spans across measures.
+func GetHarmonicJourneySpans(tune *Tune) []JourneySpan {
+	var spans []JourneySpan
 
 	for _, m := range tune.Measures {
 		for _, tc := range m.Chords {
@@ -429,21 +433,24 @@ func HarmonicJourney(tune *Tune) string {
 				continue
 			}
 			if len(spans) == 0 || spans[len(spans)-1].Center != tc.TonalCenter {
-				spans = append(spans, struct {
-					Center   string
-					StartBar int
-					EndBar   int
-				}{
+				info := GetTonalCenterInfo(tc.TonalCenter)
+				spans = append(spans, JourneySpan{
 					Center:   tc.TonalCenter,
 					StartBar: tc.MeasureNumber,
 					EndBar:   tc.MeasureNumber,
+					ColorHex: info.ColorHex,
 				})
 			} else {
 				spans[len(spans)-1].EndBar = tc.MeasureNumber
 			}
 		}
 	}
+	return spans
+}
 
+// HarmonicJourney creates a human-readable summary of tonal centers.
+func HarmonicJourney(tune *Tune) string {
+	spans := GetHarmonicJourneySpans(tune)
 	if len(spans) == 0 {
 		return ""
 	}

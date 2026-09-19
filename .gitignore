@@ -1,5 +1,5 @@
 # Binaries
-jazz-tools
+/jazz-tools
 main
 *.exe
 *.test

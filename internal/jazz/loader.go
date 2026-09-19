@@ -14,6 +14,9 @@ func LoadTune(target string) (*Tune, error) {
 		if err != nil {
 			return nil, err
 		}
+		if len(tunes) == 0 {
+			return nil, fmt.Errorf("no tunes found in iReal URL")
+		}
 		return tunes[0], nil
 	}
 
@@ -41,6 +44,9 @@ func LoadTune(target string) (*Tune, error) {
 		if err != nil {
 			return nil, err
 		}
+		if len(tunes) == 0 {
+			return nil, fmt.Errorf("no tunes found in html")
+		}
 		return tunes[0], nil
 	}
 
@@ -49,4 +55,32 @@ func LoadTune(target string) (*Tune, error) {
 	}
 
 	return nil, fmt.Errorf("unrecognized file format or content in %s", target)
+}
+
+// ParseTuneData parses tune data from raw string content (iReal URL or MusicXML).
+func ParseTuneData(data string) (*Tune, error) {
+	trimmed := strings.TrimSpace(data)
+	if strings.HasPrefix(trimmed, "irealb://") || strings.HasPrefix(trimmed, "irealbook://") {
+		tunes, err := ParseIRealURL(trimmed)
+		if err != nil {
+			return nil, err
+		}
+		if len(tunes) == 0 {
+			return nil, fmt.Errorf("no tunes found in iReal URL")
+		}
+		return tunes[0], nil
+	}
+
+	if strings.Contains(trimmed, "irealb://") || strings.Contains(trimmed, "irealbook://") {
+		tunes, err := ParseIRealURL(trimmed)
+		if err == nil && len(tunes) > 0 {
+			return tunes[0], nil
+		}
+	}
+
+	if strings.HasPrefix(trimmed, "<?xml") || strings.Contains(trimmed, "<score-partwise") {
+		return ParseMusicXML(strings.NewReader(trimmed))
+	}
+
+	return nil, fmt.Errorf("unrecognized format: expected iReal URL or MusicXML content")
 }

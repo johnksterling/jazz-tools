@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"jazz-tools/internal/jazz"
+	"jazz-tools/internal/server"
 )
 
 func printUsage() {
@@ -17,12 +18,14 @@ func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  jazz-tools companion <file.musicxml | irealb://... | file.html> [-o out.musicxml] [--pdf]")
 	fmt.Println("  jazz-tools analyze <file.musicxml | irealb://... | file.html>")
+	fmt.Println("  jazz-tools serve [--port 8080] [--host 0.0.0.0]")
 	fmt.Println("  jazz-tools <file.musicxml | irealb://...>")
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  companion    Generate a companion score (MusicXML & optional PDF) with distinct")
 	fmt.Println("               voice-led 3rds and 7ths on the staff for each chord's duration.")
 	fmt.Println("  analyze      Display tune structure, timing, chord progression, and guide tones.")
+	fmt.Println("  serve        Launch the web interface and REST API server.")
 	fmt.Println()
 	fmt.Println("Flags for companion:")
 	fmt.Println("  -o string            Output MusicXML path (default: <title>_guide_tones.musicxml)")
@@ -250,6 +253,25 @@ func main() {
 			os.Exit(1)
 		}
 		runAnalyze(tune)
+
+	case "serve":
+		serveCmd := flag.NewFlagSet("serve", flag.ExitOnError)
+		portFlag := serveCmd.Int("port", 8080, "Port to listen on (default: 8080)")
+		hostFlag := serveCmd.String("host", "0.0.0.0", "Host to bind to (default: 0.0.0.0)")
+		serveCmd.Parse(os.Args[2:])
+
+		srv, err := server.NewServer(server.Config{
+			Host: *hostFlag,
+			Port: *portFlag,
+		})
+		if err != nil {
+			fmt.Printf("Error starting server: %v\n", err)
+			os.Exit(1)
+		}
+		if err := srv.ListenAndServe(); err != nil {
+			fmt.Printf("Server exited: %v\n", err)
+			os.Exit(1)
+		}
 
 	default:
 		// Direct file argument without explicit subcommand

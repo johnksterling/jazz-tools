@@ -343,6 +343,13 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 	buf.WriteString(lowerBuf.String())
 	buf.WriteString("}\n\n")
 
+	hasMelody := tune.HasMelody()
+	if hasMelody {
+		buf.WriteString("melodyVoice = {\n")
+		buf.WriteString(generateMelodyTrack(tune, barsPerLine))
+		buf.WriteString("}\n\n")
+	}
+
 	// Key signature formatting
 	keyLily := "c \\major"
 	if len(tune.Measures) > 0 {
@@ -365,7 +372,17 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 		buf.WriteString("    \\new Dynamics { \\deviceAnnotations }\n")
 	}
 	buf.WriteString("    \\new ChordNames { \\theChords }\n")
-	buf.WriteString("    \\new Staff {\n")
+	if hasMelody {
+		buf.WriteString("    \\new Staff \\with { instrumentName = #\"Melody\" shortInstrumentName = #\"Mel.\" } {\n")
+		buf.WriteString("      \\clef treble\n")
+		buf.WriteString(fmt.Sprintf("      \\key %s\n", keyLily))
+		buf.WriteString(fmt.Sprintf("      \\time %d/%d\n", timeBeats, timeBeatType))
+		buf.WriteString("      \\new Voice { \\melodyVoice }\n")
+		buf.WriteString("    }\n")
+		buf.WriteString("    \\new Staff \\with { instrumentName = #\"Guide Tones\" shortInstrumentName = #\"G.T.\" } {\n")
+	} else {
+		buf.WriteString("    \\new Staff {\n")
+	}
 	buf.WriteString("      \\clef treble\n")
 	buf.WriteString(fmt.Sprintf("      \\key %s\n", keyLily))
 	buf.WriteString(fmt.Sprintf("      \\time %d/%d\n", timeBeats, timeBeatType))
@@ -379,6 +396,55 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 	buf.WriteString("}\n")
 
 	return buf.String(), nil
+}
+
+// generateMelodyTrack generates LilyPond notes for the primary lead sheet melody.
+func generateMelodyTrack(tune *Tune, barsPerLine int) string {
+	var buf bytes.Buffer
+	for mIdx, m := range tune.Measures {
+		beats := float64(m.TimeBeats)
+		if beats == 0 {
+			beats = 4.0
+		}
+		isLineBreak := barsPerLine > 0 && (mIdx+1)%barsPerLine == 0 && mIdx < len(tune.Measures)-1
+		breakSuffix := ""
+		if isLineBreak {
+			breakSuffix = " \\break"
+		}
+
+		if len(m.Melody) == 0 {
+			buf.WriteString(fmt.Sprintf("  R%s |%s\n", lilypondDuration(beats), breakSuffix))
+			continue
+		}
+
+		buf.WriteString("  ")
+		consumed := 0.0
+		for _, mn := range m.Melody {
+			dur := mn.DurationBeats
+			if dur <= 0 {
+				dur = 0.5
+			}
+			durStr := lilypondDuration(dur)
+			if mn.IsRest || mn.Pitch == nil {
+				buf.WriteString(fmt.Sprintf("r%s ", durStr))
+			} else {
+				p := *mn.Pitch
+				p.Octave = mn.Octave
+				pStr := lilypondPitch(p)
+				tieSuffix := ""
+				if mn.Tie == "start" {
+					tieSuffix = " ~"
+				}
+				buf.WriteString(fmt.Sprintf("%s%s%s ", pStr, durStr, tieSuffix))
+			}
+			consumed += dur
+		}
+		if consumed < beats {
+			buf.WriteString(fmt.Sprintf("r%s ", lilypondDuration(beats-consumed)))
+		}
+		buf.WriteString(fmt.Sprintf("|%s\n", breakSuffix))
+	}
+	return buf.String()
 }
 
 // generateDevicesTrack generates a LilyPond Dynamics voice with TextSpanner brackets for detected devices.

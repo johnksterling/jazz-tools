@@ -12,6 +12,8 @@ export interface StandardTune {
   style: string;
   key: string;
   url: string;
+  hasMelody?: boolean;
+  source?: string;
 }
 
 export interface JourneySpan {
@@ -19,6 +21,14 @@ export interface JourneySpan {
   startBar: number;
   endBar: number;
   colorHex: string;
+}
+
+export interface MelodyNoteDTO {
+  pitch: string;
+  durationBeats: number;
+  beatOffset: number;
+  isRest: boolean;
+  lyric?: string;
 }
 
 export interface ChordDTO {
@@ -34,6 +44,7 @@ export interface ChordDTO {
 export interface MeasureDTO {
   number: number;
   chords: ChordDTO[];
+  melody?: MelodyNoteDTO[];
 }
 
 export interface HarmonicDevice {
@@ -59,4 +70,6 @@ export interface AnalyzeResponse {
   journeySpans: JourneySpan[];
   measures: MeasureDTO[];
   devices: HarmonicDevice[];
+  hasMelody?: boolean;
+  melodyNotesCount?: number;
 }

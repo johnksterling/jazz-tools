@@ -16,8 +16,13 @@ type xmlScorePartwise struct {
 	Work           xmlWork           `xml:"work"`
 	MovementTitle  string            `xml:"movement-title"`
 	Identification xmlIdentification `xml:"identification"`
+	Credits        []xmlCredit       `xml:"credit"`
 	PartList       xmlPartList       `xml:"part-list"`
 	Parts          []xmlPart         `xml:"part"`
+}
+
+type xmlCredit struct {
+	CreditWords string `xml:"credit-words"`
 }
 
 type xmlWork struct {
@@ -111,10 +116,22 @@ func ParseMusicXML(r io.Reader) (*Tune, error) {
 		}
 	}
 
-	// Find the part that has harmonies (or choose the part with the most harmonies)
-	bestPartIdx := -1
-	maxHarmonies := -1
+	// Fallback to credit-words if title/composer are missing or generic placeholders
+	if tune.Title == "" || strings.EqualFold(tune.Title, "title") {
+		if len(score.Credits) > 0 && score.Credits[0].CreditWords != "" {
+			tune.Title = strings.TrimSpace(score.Credits[0].CreditWords)
+		}
+	}
+	if tune.Composer == "" || strings.EqualFold(tune.Composer, "composer") {
+		if len(score.Credits) > 1 && score.Credits[1].CreditWords != "" {
+			tune.Composer = strings.TrimSpace(score.Credits[1].CreditWords)
+		}
+	}
 
+	// Find the part that has harmonies (or choose the part with the most harmonies)
+	// Find part with the most harmony elements
+	harmonyPartIdx := -1
+	maxHarmonies := -1
 	for idx, part := range score.Parts {
 		hCount := 0
 		for _, m := range part.Measures {
@@ -124,18 +141,50 @@ func ParseMusicXML(r io.Reader) (*Tune, error) {
 		}
 		if hCount > maxHarmonies {
 			maxHarmonies = hCount
-			bestPartIdx = idx
+			harmonyPartIdx = idx
 		}
 	}
 
-	if bestPartIdx == -1 && len(score.Parts) > 0 {
-		bestPartIdx = 0
+	if harmonyPartIdx == -1 && len(score.Parts) > 0 {
+		harmonyPartIdx = 0
 	}
-	if bestPartIdx == -1 {
+	if harmonyPartIdx == -1 {
 		return nil, fmt.Errorf("no parts found in MusicXML score")
 	}
 
-	targetPart := score.Parts[bestPartIdx]
+	// Find part with the most melody notes (pitches)
+	melodyPartIdx := harmonyPartIdx
+	maxMelodyNotes := 0
+	for idx, part := range score.Parts {
+		nCount := 0
+		for _, m := range part.Measures {
+			nCount += strings.Count(string(m.Inner), "<pitch")
+		}
+		if nCount > maxMelodyNotes {
+			maxMelodyNotes = nCount
+			melodyPartIdx = idx
+		}
+	}
+
+	// If melody is in a separate part, pre-parse melody measures
+	melodyByMeasure := make(map[int][]MelodyNote)
+	if melodyPartIdx != harmonyPartIdx && melodyPartIdx < len(score.Parts) {
+		melPart := score.Parts[melodyPartIdx]
+		melDivisions := 1
+		for mIdx, rawMeasure := range melPart.Measures {
+			mNum, _ := strconv.Atoi(rawMeasure.Number)
+			if mNum == 0 {
+				mNum = mIdx + 1
+			}
+			notes, newDiv := parseMeasureMelody(rawMeasure.Inner, melDivisions)
+			if newDiv > 0 {
+				melDivisions = newDiv
+			}
+			melodyByMeasure[mNum] = notes
+		}
+	}
+
+	targetPart := score.Parts[harmonyPartIdx]
 
 	// Measure-by-measure sequential parser tracking divisions and cursor position
 	divisions := 1
@@ -165,6 +214,8 @@ func ParseMusicXML(r io.Reader) (*Tune, error) {
 		var harmonyEvents []harmonyAt
 		cursor := 0
 		maxCursor := 0
+
+		lastOnset := 0
 
 		// Decode the inner elements of the measure sequentially
 		dec := xml.NewDecoder(strings.NewReader("<measure>" + string(rawMeasure.Inner) + "</measure>"))
@@ -258,12 +309,81 @@ func ParseMusicXML(r io.Reader) (*Tune, error) {
 					Duration int       `xml:"duration"`
 					Chord    *xml.Name `xml:"chord"`
 					Rest     *xml.Name `xml:"rest"`
+					Voice    int       `xml:"voice"`
+					Pitch    struct {
+						Step   string `xml:"step"`
+						Alter  int    `xml:"alter"`
+						Octave int    `xml:"octave"`
+					} `xml:"pitch"`
+					Tie []struct {
+						Type string `xml:"type,attr"`
+					} `xml:"tie"`
+					Tied []struct {
+						Type string `xml:"type,attr"`
+					} `xml:"tied"`
+					Lyric []struct {
+						Text string `xml:"text"`
+					} `xml:"lyric"`
 				}
 				if err := dec.DecodeElement(&n, &se); err == nil {
-					if n.Chord == nil {
+					onsetDiv := cursor
+					if n.Chord != nil {
+						onsetDiv = lastOnset
+					} else {
+						lastOnset = cursor
 						cursor += n.Duration
 						if cursor > maxCursor {
 							maxCursor = cursor
+						}
+					}
+
+					// Only capture primary voice (voice 0 or 1) as melody line
+					if n.Voice <= 1 {
+						divs := divisions
+						if divs <= 0 {
+							divs = 1
+						}
+						beatOffset := float64(onsetDiv) / float64(divs)
+						durBeats := float64(n.Duration) / float64(divs)
+
+						tieType := ""
+						if len(n.Tie) > 0 {
+							tieType = n.Tie[0].Type
+						} else if len(n.Tied) > 0 {
+							tieType = n.Tied[0].Type
+						}
+
+						lyricText := ""
+						if len(n.Lyric) > 0 {
+							lyricText = n.Lyric[0].Text
+						}
+
+						if n.Rest != nil || n.Pitch.Step == "" {
+							timedMeasure.Melody = append(timedMeasure.Melody, MelodyNote{
+								IsRest:        true,
+								BeatOffset:    beatOffset,
+								DurationBeats: durBeats,
+							})
+						} else {
+							stepRune, _ := utf8.DecodeRuneInString(n.Pitch.Step)
+							p := Pitch{
+								Step:  stepRune,
+								Alter: n.Pitch.Alter,
+							}
+							oct := n.Pitch.Octave
+							if oct == 0 {
+								oct = 4
+							}
+							timedMeasure.Melody = append(timedMeasure.Melody, MelodyNote{
+								Pitch:         &p,
+								Octave:        oct,
+								DurationBeats: durBeats,
+								BeatOffset:    beatOffset,
+								IsRest:        false,
+								IsChord:       (n.Chord != nil),
+								Tie:           tieType,
+								Lyric:         lyricText,
+							})
 						}
 					}
 				}
@@ -338,6 +458,11 @@ func ParseMusicXML(r io.Reader) (*Tune, error) {
 			}
 		}
 
+		// If melody was pre-parsed from a dedicated melody part, attach it
+		if melNotes, ok := melodyByMeasure[mNum]; ok && len(melNotes) > 0 {
+			timedMeasure.Melody = melNotes
+		}
+
 		tune.Measures = append(tune.Measures, timedMeasure)
 	}
 
@@ -348,3 +473,134 @@ func ParseMusicXML(r io.Reader) (*Tune, error) {
 
 	return tune, nil
 }
+
+// parseMeasureMelody extracts melody notes and rest events from a raw MusicXML measure fragment.
+func parseMeasureMelody(inner []byte, divisions int) ([]MelodyNote, int) {
+	var notes []MelodyNote
+	cursor := 0
+	lastOnset := 0
+
+	dec := xml.NewDecoder(strings.NewReader("<measure>" + string(inner) + "</measure>"))
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			break
+		}
+		se, ok := tok.(xml.StartElement)
+		if !ok {
+			continue
+		}
+
+		switch se.Name.Local {
+		case "attributes":
+			var attr struct {
+				Divisions int `xml:"divisions"`
+			}
+			if err := dec.DecodeElement(&attr, &se); err == nil && attr.Divisions > 0 {
+				divisions = attr.Divisions
+			}
+
+		case "note":
+			var n struct {
+				Duration int       `xml:"duration"`
+				Chord    *xml.Name `xml:"chord"`
+				Rest     *xml.Name `xml:"rest"`
+				Voice    int       `xml:"voice"`
+				Pitch    struct {
+					Step   string `xml:"step"`
+					Alter  int    `xml:"alter"`
+					Octave int    `xml:"octave"`
+				} `xml:"pitch"`
+				Tie []struct {
+					Type string `xml:"type,attr"`
+				} `xml:"tie"`
+				Tied []struct {
+					Type string `xml:"type,attr"`
+				} `xml:"tied"`
+				Lyric []struct {
+					Text string `xml:"text"`
+				} `xml:"lyric"`
+			}
+			if err := dec.DecodeElement(&n, &se); err == nil {
+				onsetDiv := cursor
+				if n.Chord != nil {
+					onsetDiv = lastOnset
+				} else {
+					lastOnset = cursor
+					cursor += n.Duration
+				}
+
+				if n.Voice <= 1 {
+					divs := divisions
+					if divs <= 0 {
+						divs = 1
+					}
+					beatOffset := float64(onsetDiv) / float64(divs)
+					durBeats := float64(n.Duration) / float64(divs)
+
+					tieType := ""
+					if len(n.Tie) > 0 {
+						tieType = n.Tie[0].Type
+					} else if len(n.Tied) > 0 {
+						tieType = n.Tied[0].Type
+					}
+
+					lyricText := ""
+					if len(n.Lyric) > 0 {
+						lyricText = n.Lyric[0].Text
+					}
+
+					if n.Rest != nil || n.Pitch.Step == "" {
+						notes = append(notes, MelodyNote{
+							IsRest:        true,
+							BeatOffset:    beatOffset,
+							DurationBeats: durBeats,
+						})
+					} else {
+						stepRune, _ := utf8.DecodeRuneInString(n.Pitch.Step)
+						p := Pitch{
+							Step:  stepRune,
+							Alter: n.Pitch.Alter,
+						}
+						oct := n.Pitch.Octave
+						if oct == 0 {
+							oct = 4
+						}
+						notes = append(notes, MelodyNote{
+							Pitch:         &p,
+							Octave:        oct,
+							DurationBeats: durBeats,
+							BeatOffset:    beatOffset,
+							IsRest:        false,
+							IsChord:       (n.Chord != nil),
+							Tie:           tieType,
+							Lyric:         lyricText,
+						})
+					}
+				}
+			}
+
+		case "backup":
+			var b struct {
+				Duration int `xml:"duration"`
+			}
+			if err := dec.DecodeElement(&b, &se); err == nil {
+				cursor -= b.Duration
+				if cursor < 0 {
+					cursor = 0
+				}
+			}
+
+		case "forward":
+			var f struct {
+				Duration int `xml:"duration"`
+			}
+			if err := dec.DecodeElement(&f, &se); err == nil {
+				cursor += f.Duration
+			}
+		}
+	}
+
+	return notes, divisions
+}
+

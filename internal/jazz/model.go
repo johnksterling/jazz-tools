@@ -20,7 +20,27 @@ type TimedChord struct {
 	IsTonalCenterChange bool   // true if this chord introduces a new tonal center
 }
 
-// TimedMeasure represents a single measure with its time signature, key, and chords.
+// MelodyNote represents a melody note or rest in a lead sheet measure.
+type MelodyNote struct {
+	Pitch         *Pitch  // nil if rest
+	Octave        int     // e.g. 4
+	DurationBeats float64 // duration in quarter note beats
+	BeatOffset    float64 // 0-indexed beat offset within measure (e.g. 0.0, 1.5)
+	IsRest        bool
+	IsChord       bool   // true if stacked on previous note in MusicXML (harmony note)
+	Tie           string // "start", "stop", or ""
+	Lyric         string // lyric syllable if present
+}
+
+// PitchName returns pitch name with octave (e.g. "Eb4", "G3", or "Rest").
+func (mn MelodyNote) PitchName() string {
+	if mn.IsRest || mn.Pitch == nil {
+		return "Rest"
+	}
+	return mn.Pitch.Name() + string('0'+byte(mn.Octave))
+}
+
+// TimedMeasure represents a single measure with its time signature, key, chords, and melody.
 type TimedMeasure struct {
 	Number       int
 	TimeBeats    int    // e.g. 4
@@ -28,6 +48,7 @@ type TimedMeasure struct {
 	KeyFifths    int    // e.g. -3 for Eb
 	KeyMode      string // "major" or "minor"
 	Chords       []TimedChord
+	Melody       []MelodyNote
 }
 
 // Tune represents a complete piece of music with metadata and measures.
@@ -65,3 +86,29 @@ func (t *Tune) KeyName() string {
 	}
 	return "C major"
 }
+
+// HasMelody returns true if the tune contains at least one non-rest melody note.
+func (t *Tune) HasMelody() bool {
+	for _, m := range t.Measures {
+		for _, n := range m.Melody {
+			if !n.IsRest {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// MelodyNotesCount returns total non-rest melody notes in the tune.
+func (t *Tune) MelodyNotesCount() int {
+	count := 0
+	for _, m := range t.Measures {
+		for _, n := range m.Melody {
+			if !n.IsRest {
+				count++
+			}
+		}
+	}
+	return count
+}
+

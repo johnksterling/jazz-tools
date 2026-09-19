@@ -103,7 +103,23 @@ jazz-tools companion "MySetlist.html" --pdf
 
 ---
 
-### 3. Annotation Controls & Options
+### 3. Interactive Web Interface (`jazz-tools serve`)
+
+Launch the built-in web interface and REST API server:
+
+```bash
+jazz-tools serve --port 8080
+```
+
+Open [http://localhost:8080](http://localhost:8080) in your browser:
+- **Interactive In-Browser Notation**: Renders companion scores directly in SVG with OpenSheetMusicDisplay.
+- **Harmonic Modulation Trajectory**: Visual colored timeline of key changes and Berklee harmonic devices.
+- **Multi-Source Ingestion**: One-click demo tunes, paste `irealb://` links, or upload `.musicxml` files.
+- **One-Click Exports**: Download companion MusicXML or print-ready LilyPond PDFs.
+
+---
+
+### 4. Annotation Controls & Options
 
 Fine-tune annotations according to your rehearsal or pedagogical needs:
 
@@ -127,7 +143,7 @@ jazz-tools companion Autumn_Leaves.musicxml --pdf --bars 4
 
 ## Installation & Requirements
 
-Ensure you have [Go](https://go.dev) (1.20+) installed.
+Ensure you have [Go](https://go.dev) (1.21+) installed.
 
 To compile PDFs directly, install [LilyPond](https://lilypond.org):
 ```bash
@@ -138,9 +154,9 @@ brew install lilypond
 sudo apt-get install lilypond
 ```
 
-Build the binary:
+Build the self-contained binary (includes the embedded web interface):
 ```bash
-go build -o jazz-tools .
+go build -o jazz-tools ./cmd/jazz-tools
 ```
 
 ---
@@ -152,3 +168,4 @@ Run the full test suite covering pitch class math, chord qualities, voice leadin
 ```bash
 go test -v ./...
 ```
+

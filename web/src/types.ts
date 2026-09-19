@@ -5,6 +5,15 @@ export interface SampleTune {
   type: string;
 }
 
+export interface StandardTune {
+  id: string;
+  title: string;
+  composer: string;
+  style: string;
+  key: string;
+  url: string;
+}
+
 export interface JourneySpan {
   center: string;
   startBar: number;

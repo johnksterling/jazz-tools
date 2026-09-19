@@ -31,9 +31,14 @@ Command-line utility and jazz music theory engine to analyze jazz standards, tra
 
 ### 1. Terminal Harmonic Analysis (`jazz-tools analyze`)
 
-Analyze any MusicXML file or iReal Pro URL/HTML export to inspect chord holds, voice-led guide tones, and tonal journey:
+Analyze any MusicXML file, iReal Pro URL, or search directly by song title from the built-in catalog of **1,400 Jazz Standards**:
 
 ```bash
+# Direct title lookup from built-in 1,400 standards library:
+jazz-tools analyze "Autumn Leaves"
+jazz-tools analyze "Giant Steps"
+
+# Or analyze a local file or iReal URL:
 jazz-tools analyze Blue_Bossa.musicxml
 ```
 
@@ -112,6 +117,8 @@ jazz-tools serve --port 8080
 ```
 
 Open [http://localhost:8080](http://localhost:8080) in your browser:
+
+- **Instant Search across 1,400 Jazz Standards**: Search by song name or composer (e.g. *Giant Steps*, *Autumn Leaves*, *Bill Evans*) with real-time autocompletion and one-click loading.
 - **Interactive In-Browser Notation**: Renders companion scores directly in SVG with OpenSheetMusicDisplay.
 - **Harmonic Modulation Trajectory**: Visual colored timeline of key changes and Berklee harmonic devices.
 - **Multi-Source Ingestion**: One-click demo tunes, paste `irealb://` links, or upload `.musicxml` files.

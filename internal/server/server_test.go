@@ -6,6 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"jazz-tools/internal/jazz"
 )
 
 func newTestServer(t *testing.T) *Server {
@@ -96,5 +98,63 @@ func TestCompanionXMLEndpoint(t *testing.T) {
 	xmlStr := rec.Body.String()
 	if !strings.Contains(xmlStr, "<score-partwise") {
 		t.Errorf("expected valid MusicXML score-partwise, got: %s", xmlStr)
+	}
+}
+
+func TestStandardsEndpoint(t *testing.T) {
+	s := newTestServer(t)
+	req := httptest.NewRequest("GET", "/api/standards?q=Autumn", nil)
+	rec := httptest.NewRecorder()
+
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var results []jazz.StandardTune
+	if err := json.Unmarshal(rec.Body.Bytes(), &results); err != nil {
+		t.Fatalf("failed to decode standards: %v", err)
+	}
+
+	if len(results) == 0 {
+		t.Fatalf("expected at least 1 match for 'Autumn', got 0")
+	}
+
+	found := false
+	for _, tune := range results {
+		if tune.Title == "Autumn Leaves" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected to find Autumn Leaves in search results")
+	}
+}
+
+func TestAnalyzeEndpoint_StandardAutumnLeaves(t *testing.T) {
+	s := newTestServer(t)
+	body := strings.NewReader(`{"standard":"Autumn Leaves"}`)
+	req := httptest.NewRequest("POST", "/api/analyze", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp AnalyzeResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal analyze response: %v", err)
+	}
+
+	if resp.Title != "Autumn Leaves" {
+		t.Errorf("expected Autumn Leaves, got %s", resp.Title)
+	}
+	if len(resp.Measures) == 0 {
+		t.Errorf("expected measures in Autumn Leaves, got 0")
 	}
 }

@@ -22,6 +22,13 @@ func LoadTune(target string) (*Tune, error) {
 
 	// Check if file exists
 	if _, err := os.Stat(target); err != nil {
+		// Check if target matches a built-in jazz standard title
+		if std, ok := FindStandardByExactTitle(target); ok {
+			return LoadTune(std.URL)
+		}
+		if matches := SearchStandards(target, 2); len(matches) == 1 {
+			return LoadTune(matches[0].URL)
+		}
 		return nil, fmt.Errorf("file not found: %s", target)
 	}
 
@@ -82,5 +89,12 @@ func ParseTuneData(data string) (*Tune, error) {
 		return ParseMusicXML(strings.NewReader(trimmed))
 	}
 
-	return nil, fmt.Errorf("unrecognized format: expected iReal URL or MusicXML content")
+	if std, ok := FindStandardByExactTitle(trimmed); ok {
+		return LoadTune(std.URL)
+	}
+	if matches := SearchStandards(trimmed, 2); len(matches) == 1 {
+		return LoadTune(matches[0].URL)
+	}
+
+	return nil, fmt.Errorf("unrecognized format: expected iReal URL, standard song name, or MusicXML content")
 }

@@ -8,13 +8,14 @@ import { Music, FileText, Download, Play, Upload, RefreshCw, AlertCircle, Search
 
 const POPULAR_STANDARDS = [
   'Autumn Leaves',
-  'All The Things You Are',
-  'Blue Bossa',
+  'Blue in Green',
   'Giant Steps',
-  'Take The A Train',
-  'Stella By Starlight',
-  'Body and Soul',
-  'Fly Me To The Moon',
+  'Waltz for Debby',
+  'Donna Lee',
+  'A Night in Tunisia',
+  'Take Five',
+  'Jordu',
+  'All The Things You Are',
   'Round Midnight',
 ];
 
@@ -355,9 +356,16 @@ export const App: React.FC = () => {
                             }`}
                           >
                             <div className="min-w-0 pr-2">
-                              <p className={`text-sm font-semibold truncate ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
-                                {item.title}
-                              </p>
+                              <div className="flex items-center gap-1.5">
+                                <p className={`text-sm font-semibold truncate ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
+                                  {item.title}
+                                </p>
+                                {item.hasMelody && (
+                                  <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200 flex-shrink-0" title="Includes full melody staff">
+                                    🎵 Melody
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-xs text-slate-500 truncate">{item.composer || 'Jazz Standard'}</p>
                             </div>
                             <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -477,7 +485,7 @@ export const App: React.FC = () => {
                 {analysis.composer && (
                   <p className="text-sm text-slate-500 mt-0.5">by {analysis.composer}</p>
                 )}
-                <div className="flex items-center gap-2 mt-3">
+                <div className="flex flex-wrap items-center gap-2 mt-3">
                   <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold">
                     Key: {analysis.key || 'Modal/C'}
                   </span>
@@ -487,6 +495,15 @@ export const App: React.FC = () => {
                   <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold">
                     {analysis.measureCount} Measures
                   </span>
+                  {analysis.hasMelody ? (
+                    <span className="px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 text-xs font-semibold flex items-center gap-1 border border-emerald-200 shadow-xs">
+                      🎵 Full Melody Included ({analysis.melodyNotesCount} notes)
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-600 text-xs font-medium">
+                      Chord Chart (Voice-Led Guide Tones)
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -518,7 +535,7 @@ export const App: React.FC = () => {
             <DevicesList devices={analysis.devices} />
 
             {/* Interactive MusicXML Score Viewer */}
-            {scoreXml && <ScoreViewer xmlContent={scoreXml} />}
+            {scoreXml && <ScoreViewer xmlContent={scoreXml} hasMelody={analysis.hasMelody} />}
 
             {/* Measure & Chords Table */}
             <ChordsTable measures={analysis.measures} />

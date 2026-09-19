@@ -49,23 +49,35 @@ type ChordDTO struct {
 	ColorHex      string  `json:"colorHex"`
 }
 
-// MeasureDTO represents a measure containing chord events.
+// MelodyNoteDTO represents a note or rest in the lead sheet melody.
+type MelodyNoteDTO struct {
+	Pitch         string  `json:"pitch"`
+	DurationBeats float64 `json:"durationBeats"`
+	BeatOffset    float64 `json:"beatOffset"`
+	IsRest        bool    `json:"isRest"`
+	Lyric         string  `json:"lyric,omitempty"`
+}
+
+// MeasureDTO represents a measure containing chord events and optional melody notes.
 type MeasureDTO struct {
-	Number int        `json:"number"`
-	Chords []ChordDTO `json:"chords"`
+	Number int             `json:"number"`
+	Chords []ChordDTO      `json:"chords"`
+	Melody []MelodyNoteDTO `json:"melody,omitempty"`
 }
 
 // AnalyzeResponse contains comprehensive harmonic analysis of a tune.
 type AnalyzeResponse struct {
-	Title           string                `json:"title"`
-	Composer        string                `json:"composer"`
-	Key             string                `json:"key"`
-	TimeSignature   [2]int                `json:"timeSignature"`
-	MeasureCount    int                   `json:"measureCount"`
-	HarmonicJourney string                `json:"harmonicJourney"`
-	JourneySpans    []jazz.JourneySpan    `json:"journeySpans"`
-	Measures        []MeasureDTO          `json:"measures"`
-	Devices         []jazz.HarmonicDevice `json:"devices"`
+	Title            string                `json:"title"`
+	Composer         string                `json:"composer"`
+	Key              string                `json:"key"`
+	TimeSignature    [2]int                `json:"timeSignature"`
+	MeasureCount     int                   `json:"measureCount"`
+	HarmonicJourney  string                `json:"harmonicJourney"`
+	JourneySpans     []jazz.JourneySpan    `json:"journeySpans"`
+	Measures         []MeasureDTO          `json:"measures"`
+	Devices          []jazz.HarmonicDevice `json:"devices"`
+	HasMelody        bool                  `json:"hasMelody"`
+	MelodyNotesCount int                   `json:"melodyNotesCount"`
 }
 
 // parseTuneFromRequest extracts and decodes a Tune from JSON or multipart form.
@@ -208,19 +220,30 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 				ColorHex:      tcInfo.ColorHex,
 			})
 		}
+		for _, mn := range m.Melody {
+			mDTO.Melody = append(mDTO.Melody, MelodyNoteDTO{
+				Pitch:         mn.PitchName(),
+				DurationBeats: mn.DurationBeats,
+				BeatOffset:    mn.BeatOffset,
+				IsRest:        mn.IsRest,
+				Lyric:         mn.Lyric,
+			})
+		}
 		measuresDTO = append(measuresDTO, mDTO)
 	}
 
 	resp := AnalyzeResponse{
-		Title:           tune.Title,
-		Composer:        tune.Composer,
-		Key:             tune.Key,
-		TimeSignature:   tune.TimeSignature,
-		MeasureCount:    len(tune.Measures),
-		HarmonicJourney: journeyStr,
-		JourneySpans:    journeySpans,
-		Measures:        measuresDTO,
-		Devices:         devices,
+		Title:            tune.Title,
+		Composer:         tune.Composer,
+		Key:              tune.Key,
+		TimeSignature:    tune.TimeSignature,
+		MeasureCount:     len(tune.Measures),
+		HarmonicJourney:  journeyStr,
+		JourneySpans:     journeySpans,
+		Measures:         measuresDTO,
+		Devices:          devices,
+		HasMelody:        tune.HasMelody(),
+		MelodyNotesCount: tune.MelodyNotesCount(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")

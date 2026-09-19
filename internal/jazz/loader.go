@@ -1,6 +1,7 @@
 package jazz
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,14 @@ import (
 
 // LoadTune loads a tune from either a MusicXML file or an iReal Pro URL / file.
 func LoadTune(target string) (*Tune, error) {
+	if strings.HasPrefix(target, "musicxml://") {
+		data, err := GetMusicXMLStandardData(target)
+		if err != nil {
+			return nil, err
+		}
+		return ParseMusicXML(bytes.NewReader(data))
+	}
+
 	if strings.HasPrefix(target, "irealb://") || strings.HasPrefix(target, "irealbook://") {
 		tunes, err := ParseIRealURL(target)
 		if err != nil {

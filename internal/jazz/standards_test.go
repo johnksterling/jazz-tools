@@ -21,8 +21,8 @@ func TestSearchStandards(t *testing.T) {
 	for _, s := range results {
 		if s.Title == "Autumn Leaves" {
 			foundLeaves = true
-			if s.Key != "G-" {
-				t.Errorf("expected Autumn Leaves key G-, got %s", s.Key)
+			if !s.HasMelody {
+				t.Errorf("expected prioritized Autumn Leaves to have HasMelody == true")
 			}
 			break
 		}
@@ -42,5 +42,8 @@ func TestLoadTuneByStandardTitle(t *testing.T) {
 	}
 	if len(tune.Measures) == 0 {
 		t.Errorf("expected measures in Autumn Leaves, got 0")
+	}
+	if !tune.HasMelody() {
+		t.Errorf("expected Autumn Leaves loaded standard to have melody notes")
 	}
 }

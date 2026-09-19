@@ -51,6 +51,7 @@ func (s *Server) registerRoutes() {
 		_, _ = w.Write([]byte(`{"status":"ok","version":"1.0.0"}`))
 	})
 	s.mux.HandleFunc("GET /api/samples", s.handleSamples)
+	s.mux.HandleFunc("GET /api/standards", s.handleStandards)
 	s.mux.HandleFunc("POST /api/analyze", s.handleAnalyze)
 	s.mux.HandleFunc("POST /api/companion/xml", s.handleCompanionXML)
 	s.mux.HandleFunc("POST /api/companion/pdf", s.handleCompanionPDF)

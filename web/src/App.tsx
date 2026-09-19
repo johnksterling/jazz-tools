@@ -1,38 +1,81 @@
 import React, { useState, useEffect } from 'react';
-import { AnalyzeResponse, SampleTune } from './types';
+import { AnalyzeResponse, SampleTune, StandardTune } from './types';
 import { HarmonicJourney } from './components/HarmonicJourney';
 import { DevicesList } from './components/DevicesList';
 import { ChordsTable } from './components/ChordsTable';
 import { ScoreViewer } from './components/ScoreViewer';
-import { Music, FileText, Download, Play, Upload, RefreshCw, AlertCircle } from 'lucide-react';
+import { Music, FileText, Download, Play, Upload, RefreshCw, AlertCircle, Search } from 'lucide-react';
+
+const POPULAR_STANDARDS = [
+  'Autumn Leaves',
+  'All The Things You Are',
+  'Blue Bossa',
+  'Giant Steps',
+  'Take The A Train',
+  'Stella By Starlight',
+  'Body and Soul',
+  'Fly Me To The Moon',
+  'Round Midnight',
+];
 
 export const App: React.FC = () => {
   const [samples, setSamples] = useState<SampleTune[]>([]);
-  const [activeTab, setActiveTab] = useState<'sample' | 'text' | 'upload'>('sample');
+  const [activeTab, setActiveTab] = useState<'search' | 'sample' | 'text' | 'upload'>('search');
+  
+  // Search tab state
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [searchResults, setSearchResults] = useState<StandardTune[]>([]);
+  const [selectedStandard, setSelectedStandard] = useState<StandardTune | null>(null);
+  const [searching, setSearching] = useState<boolean>(false);
+
+  // Other tabs state
   const [selectedSample, setSelectedSample] = useState<string>('waltz_for_debby');
   const [textContent, setTextContent] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
+  // Results & status
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
   const [scoreXml, setScoreXml] = useState<string | null>(null);
   const [downloadingPdf, setDownloadingPdf] = useState<boolean>(false);
 
+  // Fetch samples and initial standard on mount
   useEffect(() => {
     fetch('/api/samples')
       .then((res) => (res.ok ? res.json() : []))
-      .then((data: SampleTune[]) => {
-        setSamples(data);
-        if (data.length > 0) {
-          // Auto-load first sample
-          triggerAnalyze({ sample: data[1]?.id || data[0].id });
-        }
-      })
+      .then((data: SampleTune[]) => setSamples(data))
       .catch(() => {});
+
+    // Initial default tune
+    triggerAnalyze({ standard: 'Autumn Leaves' });
   }, []);
 
-  const triggerAnalyze = async (payload: { sample?: string; content?: string; file?: File }) => {
+  // Debounced search for 1,400 standards
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      fetch('/api/standards?limit=12')
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data: StandardTune[]) => setSearchResults(data))
+        .catch(() => {});
+      return;
+    }
+
+    setSearching(true);
+    const timeout = setTimeout(() => {
+      fetch(`/api/standards?q=${encodeURIComponent(searchQuery)}&limit=24`)
+        .then((res) => (res.ok ? res.json() : []))
+        .then((data: StandardTune[]) => {
+          setSearchResults(data);
+          setSearching(false);
+        })
+        .catch(() => setSearching(false));
+    }, 150);
+
+    return () => clearTimeout(timeout);
+  }, [searchQuery]);
+
+  const triggerAnalyze = async (payload: { sample?: string; content?: string; file?: File; standard?: string }) => {
     setLoading(true);
     setError(null);
 
@@ -59,6 +102,7 @@ export const App: React.FC = () => {
         const jsonBody = JSON.stringify({
           sample: payload.sample,
           content: payload.content,
+          standard: payload.standard,
         });
 
         analyzeRes = await fetch('/api/analyze', {
@@ -95,9 +139,20 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleSelectStandard = (standard: StandardTune) => {
+    setSelectedStandard(standard);
+    triggerAnalyze({ standard: standard.title });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (activeTab === 'sample') {
+    if (activeTab === 'search') {
+      if (searchResults.length > 0) {
+        handleSelectStandard(searchResults[0]);
+      } else if (searchQuery.trim()) {
+        triggerAnalyze({ standard: searchQuery.trim() });
+      }
+    } else if (activeTab === 'sample') {
       triggerAnalyze({ sample: selectedSample });
     } else if (activeTab === 'text') {
       if (!textContent.trim()) {
@@ -138,6 +193,7 @@ export const App: React.FC = () => {
         const jsonBody = JSON.stringify({
           sample: activeTab === 'sample' ? selectedSample : undefined,
           content: activeTab === 'text' ? textContent.trim() : undefined,
+          standard: activeTab === 'search' ? (selectedStandard?.title || analysis.title) : undefined,
         });
         res = await fetch('/api/companion/pdf', {
           method: 'POST',
@@ -185,7 +241,7 @@ export const App: React.FC = () => {
           </div>
           <div className="flex items-center gap-3 text-xs">
             <span className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-medium">
-              CLI &bull; Web &bull; LilyPond
+              1,400 Standards &bull; Web &bull; LilyPond
             </span>
           </div>
         </div>
@@ -195,10 +251,21 @@ export const App: React.FC = () => {
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full space-y-6">
         {/* Input Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="flex border-b border-slate-200 bg-slate-50/75">
+          <div className="flex border-b border-slate-200 bg-slate-50/75 overflow-x-auto">
+            <button
+              onClick={() => setActiveTab('search')}
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+                activeTab === 'search'
+                  ? 'border-blue-600 text-blue-600 bg-white'
+                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Search className="w-4 h-4" />
+              Search Standards (1,400)
+            </button>
             <button
               onClick={() => setActiveTab('sample')}
-              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'sample'
                   ? 'border-blue-600 text-blue-600 bg-white'
                   : 'border-transparent text-slate-600 hover:text-slate-900'
@@ -209,7 +276,7 @@ export const App: React.FC = () => {
             </button>
             <button
               onClick={() => setActiveTab('text')}
-              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'text'
                   ? 'border-blue-600 text-blue-600 bg-white'
                   : 'border-transparent text-slate-600 hover:text-slate-900'
@@ -220,7 +287,7 @@ export const App: React.FC = () => {
             </button>
             <button
               onClick={() => setActiveTab('upload')}
-              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'upload'
                   ? 'border-blue-600 text-blue-600 bg-white'
                   : 'border-transparent text-slate-600 hover:text-slate-900'
@@ -232,6 +299,84 @@ export const App: React.FC = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            {activeTab === 'search' && (
+              <div className="space-y-4">
+                {/* Search Box */}
+                <div className="relative">
+                  <Search className="w-5 h-5 absolute left-3.5 top-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search 1,400 jazz standards by title or composer (e.g. Autumn Leaves, Giant Steps, Bill Evans, Jobim)..."
+                    className="w-full pl-11 pr-10 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm placeholder:text-slate-400 shadow-sm"
+                  />
+                  {searching && (
+                    <RefreshCw className="w-4 h-4 animate-spin absolute right-3.5 top-3.5 text-slate-400" />
+                  )}
+                </div>
+
+                {/* Popular Standards Chips */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mr-1">Popular:</span>
+                  {POPULAR_STANDARDS.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery(name);
+                        triggerAnalyze({ standard: name });
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition-colors"
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Search Results Grid */}
+                {searchResults.length > 0 && (
+                  <div className="pt-2">
+                    <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
+                      {searchQuery ? `Matching Standards (${searchResults.length})` : 'Catalog Preview'}
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto p-1 border border-slate-100 rounded-xl bg-slate-50/50">
+                      {searchResults.map((item) => {
+                        const isSelected = analysis?.title.toLowerCase() === item.title.toLowerCase();
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => handleSelectStandard(item)}
+                            className={`p-2.5 rounded-xl text-left border transition-all flex items-center justify-between group ${
+                              isSelected
+                                ? 'bg-blue-50 border-blue-300 shadow-xs'
+                                : 'bg-white hover:bg-blue-50/50 border-slate-200/80 hover:border-blue-200'
+                            }`}
+                          >
+                            <div className="min-w-0 pr-2">
+                              <p className={`text-sm font-semibold truncate ${isSelected ? 'text-blue-900' : 'text-slate-800'}`}>
+                                {item.title}
+                              </p>
+                              <p className="text-xs text-slate-500 truncate">{item.composer || 'Jazz Standard'}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {item.key && (
+                                <span className="px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-slate-100 text-slate-600">
+                                  {item.key}
+                                </span>
+                              )}
+                              <Play className={`w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity ${isSelected ? 'opacity-100 text-blue-600' : 'text-slate-400'}`} />
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {activeTab === 'sample' && (
               <div className="flex flex-wrap gap-3 items-center">
                 <span className="text-xs font-semibold text-slate-500 uppercase">Select Standard:</span>
@@ -261,7 +406,7 @@ export const App: React.FC = () => {
                 <textarea
                   value={textContent}
                   onChange={(e) => setTextContent(e.target.value)}
-                  placeholder="Paste an irealb:// link, playlist html, or MusicXML score content..."
+                  placeholder="Paste an irealb:// link, playlist html, song name, or MusicXML score content..."
                   rows={4}
                   className="w-full text-xs font-mono p-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />

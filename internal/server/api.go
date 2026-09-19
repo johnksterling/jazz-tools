@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"jazz-tools/internal/jazz"
@@ -77,6 +78,10 @@ func (s *Server) parseTuneFromRequest(r *http.Request) (*jazz.Tune, error) {
 			return nil, fmt.Errorf("failed to parse multipart form: %w", err)
 		}
 
+		if standard := r.FormValue("standard"); standard != "" {
+			return jazz.LoadTune(standard)
+		}
+
 		if sampleID := r.FormValue("sample"); sampleID != "" {
 			return s.loadSampleTune(sampleID)
 		}
@@ -99,11 +104,15 @@ func (s *Server) parseTuneFromRequest(r *http.Request) (*jazz.Tune, error) {
 	// 2. JSON Body
 	if strings.HasPrefix(contentType, "application/json") || r.Body != nil {
 		var req struct {
-			Content string `json:"content"`
-			Sample  string `json:"sample"`
+			Content  string `json:"content"`
+			Sample   string `json:"sample"`
+			Standard string `json:"standard"`
 		}
 		dec := json.NewDecoder(r.Body)
 		if err := dec.Decode(&req); err == nil {
+			if req.Standard != "" {
+				return jazz.LoadTune(req.Standard)
+			}
 			if req.Sample != "" {
 				return s.loadSampleTune(req.Sample)
 			}
@@ -114,11 +123,14 @@ func (s *Server) parseTuneFromRequest(r *http.Request) (*jazz.Tune, error) {
 	}
 
 	// 3. Fallback to query params (useful for GET / test queries)
+	if standard := r.URL.Query().Get("standard"); standard != "" {
+		return jazz.LoadTune(standard)
+	}
 	if sampleID := r.URL.Query().Get("sample"); sampleID != "" {
 		return s.loadSampleTune(sampleID)
 	}
 
-	return nil, fmt.Errorf("no tune content provided (provide 'content', upload a 'file', or select a 'sample')")
+	return nil, fmt.Errorf("no tune content provided (provide 'content', upload a 'file', select a 'sample', or search a 'standard')")
 }
 
 func (s *Server) loadSampleTune(id string) (*jazz.Tune, error) {
@@ -138,6 +150,21 @@ func (s *Server) loadSampleTune(id string) (*jazz.Tune, error) {
 func (s *Server) handleSamples(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(sampleTunes)
+}
+
+func (s *Server) handleStandards(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	limitStr := r.URL.Query().Get("limit")
+	limit := 30
+	if limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	results := jazz.SearchStandards(q, limit)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(results)
 }
 
 func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {

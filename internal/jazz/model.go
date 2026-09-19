@@ -111,4 +111,3 @@ func (t *Tune) MelodyNotesCount() int {
 	}
 	return count
 }
-

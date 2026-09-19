@@ -603,4 +603,3 @@ func parseMeasureMelody(inner []byte, divisions int) ([]MelodyNote, int) {
 
 	return notes, divisions
 }
-

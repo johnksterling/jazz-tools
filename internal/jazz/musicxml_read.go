@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -421,6 +422,21 @@ func ParseMusicXML(r io.Reader) (*Tune, error) {
 
 		numHarmonies := len(harmonyEvents)
 		if numHarmonies > 0 {
+			sort.SliceStable(harmonyEvents, func(i, j int) bool {
+				return harmonyEvents[i].division < harmonyEvents[j].division
+			})
+
+			// Deduplicate harmonies that fall on the exact same division
+			var deduped []harmonyAt
+			for _, h := range harmonyEvents {
+				if len(deduped) > 0 && deduped[len(deduped)-1].division == h.division {
+					continue
+				}
+				deduped = append(deduped, h)
+			}
+			harmonyEvents = deduped
+			numHarmonies = len(harmonyEvents)
+
 			hasNoteTiming := maxCursor > 0 && divisions > 0
 
 			for i, h := range harmonyEvents {

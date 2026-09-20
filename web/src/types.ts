@@ -43,7 +43,7 @@ export interface ChordDTO {
 
 export interface MeasureDTO {
   number: number;
-  chords: ChordDTO[];
+  chords?: ChordDTO[];
   melody?: MelodyNoteDTO[];
 }
 

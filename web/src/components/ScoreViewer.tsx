@@ -26,11 +26,16 @@ export const ScoreViewer: React.FC<Props> = ({ xmlContent, hasMelody }) => {
       });
     }
 
-    osmdRef.current.load(xmlContent).then(() => {
-      osmdRef.current?.render();
-    }).catch(err => {
-      console.error("OSMD render error:", err);
-    });
+    try {
+      osmdRef.current.clear();
+      osmdRef.current.load(xmlContent).then(() => {
+        osmdRef.current?.render();
+      }).catch(err => {
+        console.error("OSMD render error:", err);
+      });
+    } catch (err) {
+      console.error("OSMD load error:", err);
+    }
   }, [xmlContent]);
 
   return (

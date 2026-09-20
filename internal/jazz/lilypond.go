@@ -3,6 +3,7 @@ package jazz
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,6 +44,11 @@ func lilypondPitch(p Pitch) string {
 // lilypondDuration converts beat duration into LilyPond duration string (e.g. "1", "2.", "2", "4.", "4", "8").
 func lilypondDuration(beats float64) string {
 	switch {
+	case beats > 4.25:
+		if math.Abs(beats-float64(int(beats))) < 0.01 {
+			return fmt.Sprintf("1*%d/4", int(beats))
+		}
+		return fmt.Sprintf("1*%.2g/4", beats)
 	case beats >= 3.75:
 		return "1"
 	case beats >= 2.75:
@@ -57,13 +63,31 @@ func lilypondDuration(beats float64) string {
 		return "8."
 	case beats >= 0.4:
 		return "8"
+	case beats >= 0.2:
+		return "16"
+	case beats >= 0.1:
+		return "32"
 	default:
 		return "16"
 	}
 }
 
-// lilypondChordName formats a chord into LilyPond chordmode syntax (e.g. ees4:maj7).
-func lilypondChordName(c Chord, beats float64) string {
+// fullMeasureRest returns a whole-measure rest notation for the given meter (e.g. R1, R1*5/4, R1*3/4).
+func fullMeasureRest(timeBeats, timeBeatType int) string {
+	if timeBeats == 0 {
+		timeBeats = 4
+	}
+	if timeBeatType == 0 {
+		timeBeatType = 4
+	}
+	if timeBeats == 4 && timeBeatType == 4 {
+		return "R1"
+	}
+	return fmt.Sprintf("R1*%d/%d", timeBeats, timeBeatType)
+}
+
+// lilypondChordNameWithDuration formats a chord into LilyPond chordmode syntax with an explicit duration string.
+func lilypondChordNameWithDuration(c Chord, dur string) string {
 	stepChar := strings.ToLower(string(c.Root.Step))
 	var acc string
 	switch c.Root.Alter {
@@ -76,7 +100,6 @@ func lilypondChordName(c Chord, beats float64) string {
 	case 2:
 		acc = "isis"
 	}
-	dur := lilypondDuration(beats)
 	qual := ""
 	switch c.Quality {
 	case QualityMajor7:
@@ -105,6 +128,101 @@ func lilypondChordName(c Chord, beats float64) string {
 		qual = ":m"
 	}
 	return stepChar + acc + dur + qual
+}
+
+// lilypondChordName formats a chord into LilyPond chordmode syntax (e.g. ees4:maj7).
+func lilypondChordName(c Chord, beats float64) string {
+	return lilypondChordNameWithDuration(c, lilypondDuration(beats))
+}
+
+// lilypondSkip converts beat duration into LilyPond skip syntax (e.g. s1, s2, s4, or s16*N for odd lengths).
+func lilypondSkip(beats float64) string {
+	sixteenths := int(math.Round(beats * 4.0))
+	if sixteenths <= 0 {
+		return "s16"
+	}
+	switch sixteenths {
+	case 16:
+		return "s1"
+	case 12:
+		return "s2."
+	case 8:
+		return "s2"
+	case 6:
+		return "s4."
+	case 4:
+		return "s4"
+	case 3:
+		return "s8."
+	case 2:
+		return "s8"
+	case 1:
+		return "s16"
+	default:
+		return fmt.Sprintf("s16*%d", sixteenths)
+	}
+}
+
+// decomposeDuration breaks a duration in quarter note beats into standard LilyPond duration tokens.
+func decomposeDuration(beats float64) []string {
+	sixteenths := int(math.Round(beats * 4.0))
+	var durs []string
+	for sixteenths > 0 {
+		switch {
+		case sixteenths >= 16:
+			durs = append(durs, "1")
+			sixteenths -= 16
+		case sixteenths >= 12:
+			durs = append(durs, "2.")
+			sixteenths -= 12
+		case sixteenths >= 8:
+			durs = append(durs, "2")
+			sixteenths -= 8
+		case sixteenths >= 6:
+			durs = append(durs, "4.")
+			sixteenths -= 6
+		case sixteenths >= 4:
+			durs = append(durs, "4")
+			sixteenths -= 4
+		case sixteenths >= 3:
+			durs = append(durs, "8.")
+			sixteenths -= 3
+		case sixteenths >= 2:
+			durs = append(durs, "8")
+			sixteenths -= 2
+		default:
+			durs = append(durs, "16")
+			sixteenths -= 1
+		}
+	}
+	if len(durs) == 0 {
+		return []string{"4"}
+	}
+	return durs
+}
+
+// durationToSixteenths converts a LilyPond duration token ("1", "2.", "2", "4.", "4", "8.", "8", "16") to sixteenth units.
+func durationToSixteenths(dur string) int {
+	switch dur {
+	case "1":
+		return 16
+	case "2.":
+		return 12
+	case "2":
+		return 8
+	case "4.":
+		return 6
+	case "4":
+		return 4
+	case "8.":
+		return 3
+	case "8":
+		return 2
+	case "16":
+		return 1
+	default:
+		return 1
+	}
 }
 
 // DetermineBarsPerLine calculates the optimal measures per line to fit the tune on 1 page.
@@ -193,6 +311,14 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 		}
 	}
 
+	hasMelody := tune.HasMelody()
+	barsPerLine := DetermineBarsPerLine(tune, userBars)
+	numSystems := 1
+	if barsPerLine > 0 && len(tune.Measures) > 0 {
+		numSystems = (len(tune.Measures) + barsPerLine - 1) / barsPerLine
+	}
+	canFitOnePage := !hasMelody && numSystems <= 7
+
 	var buf bytes.Buffer
 	buf.WriteString("\\version \"2.24.0\"\n\n")
 
@@ -202,11 +328,13 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 	buf.WriteString("  ragged-right = ##f\n")
 	buf.WriteString("  ragged-bottom = ##t\n")
 	buf.WriteString("  ragged-last-bottom = ##t\n")
-	buf.WriteString("  page-count = #1\n")
+	if canFitOnePage {
+		buf.WriteString("  page-count = #1\n")
+	}
 	buf.WriteString("  system-system-spacing =\n")
 	buf.WriteString("    #'((basic-distance . 16)\n")
 	buf.WriteString("       (minimum-distance . 12)\n")
-	buf.WriteString("       (padding . 4)\n")
+	buf.WriteString("       (padding . 5)\n")
 	buf.WriteString("       (stretchability . 10))\n")
 	buf.WriteString("}\n\n")
 
@@ -228,8 +356,6 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 	if cfg.ShowDevices {
 		devices = DetectHarmonicDevices(tune)
 	}
-
-	barsPerLine := DetermineBarsPerLine(tune, userBars)
 
 	if len(devices) > 0 {
 		buf.WriteString("deviceAnnotations = {\n")
@@ -256,8 +382,8 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 
 		if len(m.Chords) == 0 {
 			chordBuf.WriteString(fmt.Sprintf("  r%s |\n", lilypondDuration(beats)))
-			upperBuf.WriteString(fmt.Sprintf("  R%s |%s\n", lilypondDuration(beats), breakSuffix))
-			lowerBuf.WriteString(fmt.Sprintf("  R%s |\n", lilypondDuration(beats)))
+			upperBuf.WriteString(fmt.Sprintf("  %s |%s\n", fullMeasureRest(m.TimeBeats, m.TimeBeatType), breakSuffix))
+			lowerBuf.WriteString(fmt.Sprintf("  %s |\n", fullMeasureRest(m.TimeBeats, m.TimeBeatType)))
 		} else {
 			// Chords
 			cPos := 0.0
@@ -266,16 +392,22 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 				if tc.IsTonalCenterChange && tc.TonalCenterColor != "" {
 					chordBuf.WriteString(fmt.Sprintf("\\override ChordNames.ChordName.color = #%s ", tc.TonalCenterColor))
 				}
-				if tc.BeatOffset > cPos {
-					restBeats := tc.BeatOffset - cPos
-					chordBuf.WriteString(fmt.Sprintf("r%s ", lilypondDuration(restBeats)))
-					cPos += restBeats
+				if tc.BeatOffset > cPos+0.05 {
+					writeLilyPondRests(&chordBuf, tc.BeatOffset-cPos)
+					cPos = tc.BeatOffset
 				}
-				chordBuf.WriteString(fmt.Sprintf("%s ", lilypondChordName(tc.Chord, tc.DurationBeats)))
+				parts := decomposeDuration(tc.DurationBeats)
+				for pIdx, d := range parts {
+					tie := ""
+					if pIdx < len(parts)-1 {
+						tie = " ~"
+					}
+					chordBuf.WriteString(fmt.Sprintf("%s%s ", lilypondChordNameWithDuration(tc.Chord, d), tie))
+				}
 				cPos += tc.DurationBeats
 			}
-			if cPos < beats {
-				chordBuf.WriteString(fmt.Sprintf("r%s ", lilypondDuration(beats-cPos)))
+			if beats-cPos > 0.05 {
+				writeLilyPondRests(&chordBuf, beats-cPos)
 			}
 			chordBuf.WriteString("|\n")
 
@@ -283,13 +415,11 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 			v1Pos := 0.0
 			upperBuf.WriteString("  ")
 			for _, tc := range m.Chords {
-				if tc.BeatOffset > v1Pos {
-					restBeats := tc.BeatOffset - v1Pos
-					upperBuf.WriteString(fmt.Sprintf("r%s ", lilypondDuration(restBeats)))
-					v1Pos += restBeats
+				if tc.BeatOffset > v1Pos+0.05 {
+					writeLilyPondRests(&upperBuf, tc.BeatOffset-v1Pos)
+					v1Pos = tc.BeatOffset
 				}
 				p := tc.GuideTones.Voice1
-				dur := tc.DurationBeats
 				colorPrefix := ""
 				if tc.TonalCenterColor != "" {
 					colorPrefix = fmt.Sprintf("\\tweak color #%s ", tc.TonalCenterColor)
@@ -298,11 +428,24 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 				if cfg.ShowKeys && tc.IsTonalCenterChange && tc.TonalCenter != "" {
 					markupSuffix = fmt.Sprintf("^\\markup { \\with-color #%s \\rounded-box \\bold \\fontsize #-2 \"%s\" }", tc.TonalCenterColor, tc.TonalCenter)
 				}
-				upperBuf.WriteString(fmt.Sprintf("%s%s%s%s ", colorPrefix, lilypondPitch(p), lilypondDuration(dur), markupSuffix))
-				v1Pos += dur
+				parts := decomposeDuration(tc.DurationBeats)
+				for pIdx, d := range parts {
+					tie := ""
+					if pIdx < len(parts)-1 {
+						tie = " ~"
+					}
+					cp := ""
+					ms := ""
+					if pIdx == 0 {
+						cp = colorPrefix
+						ms = markupSuffix
+					}
+					upperBuf.WriteString(fmt.Sprintf("%s%s%s%s%s ", cp, lilypondPitch(p), d, tie, ms))
+				}
+				v1Pos += tc.DurationBeats
 			}
-			if v1Pos < beats {
-				upperBuf.WriteString(fmt.Sprintf("r%s ", lilypondDuration(beats-v1Pos)))
+			if beats-v1Pos > 0.05 {
+				writeLilyPondRests(&upperBuf, beats-v1Pos)
 			}
 			upperBuf.WriteString(fmt.Sprintf("|%s\n", breakSuffix))
 
@@ -310,22 +453,31 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 			v2Pos := 0.0
 			lowerBuf.WriteString("  ")
 			for _, tc := range m.Chords {
-				if tc.BeatOffset > v2Pos {
-					restBeats := tc.BeatOffset - v2Pos
-					lowerBuf.WriteString(fmt.Sprintf("r%s ", lilypondDuration(restBeats)))
-					v2Pos += restBeats
+				if tc.BeatOffset > v2Pos+0.05 {
+					writeLilyPondRests(&lowerBuf, tc.BeatOffset-v2Pos)
+					v2Pos = tc.BeatOffset
 				}
 				p := tc.GuideTones.Voice2
-				dur := tc.DurationBeats
 				colorPrefix := ""
 				if tc.TonalCenterColor != "" {
 					colorPrefix = fmt.Sprintf("\\tweak color #%s ", tc.TonalCenterColor)
 				}
-				lowerBuf.WriteString(fmt.Sprintf("%s%s%s ", colorPrefix, lilypondPitch(p), lilypondDuration(dur)))
-				v2Pos += dur
+				parts := decomposeDuration(tc.DurationBeats)
+				for pIdx, d := range parts {
+					tie := ""
+					if pIdx < len(parts)-1 {
+						tie = " ~"
+					}
+					cp := ""
+					if pIdx == 0 {
+						cp = colorPrefix
+					}
+					lowerBuf.WriteString(fmt.Sprintf("%s%s%s%s ", cp, lilypondPitch(p), d, tie))
+				}
+				v2Pos += tc.DurationBeats
 			}
-			if v2Pos < beats {
-				lowerBuf.WriteString(fmt.Sprintf("r%s ", lilypondDuration(beats-v2Pos)))
+			if beats-v2Pos > 0.05 {
+				writeLilyPondRests(&lowerBuf, beats-v2Pos)
 			}
 			lowerBuf.WriteString("|\n")
 		}
@@ -343,7 +495,6 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 	buf.WriteString(lowerBuf.String())
 	buf.WriteString("}\n\n")
 
-	hasMelody := tune.HasMelody()
 	if hasMelody {
 		buf.WriteString("melodyVoice = {\n")
 		buf.WriteString(generateMelodyTrack(tune, barsPerLine))
@@ -369,33 +520,97 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 	buf.WriteString("\\score {\n")
 	buf.WriteString("  <<\n")
 	if len(devices) > 0 {
-		buf.WriteString("    \\new Dynamics { \\deviceAnnotations }\n")
+		buf.WriteString("    \\new Dynamics \\with {\n")
+		buf.WriteString("      \\override VerticalAxisGroup.nonstaff-relatedstaff-spacing =\n")
+		buf.WriteString("        #'((basic-distance . 4)\n")
+		buf.WriteString("           (minimum-distance . 3)\n")
+		buf.WriteString("           (padding . 1.5))\n")
+		buf.WriteString("    } { \\deviceAnnotations }\n")
 	}
-	buf.WriteString("    \\new ChordNames { \\theChords }\n")
+	buf.WriteString("    \\new ChordNames \\with {\n")
+	buf.WriteString("      \\override VerticalAxisGroup.nonstaff-relatedstaff-spacing =\n")
+	buf.WriteString("        #'((basic-distance . 5)\n")
+	buf.WriteString("           (minimum-distance . 4)\n")
+	buf.WriteString("           (padding . 2))\n")
+	buf.WriteString("    } { \\theChords }\n")
 	if hasMelody {
-		buf.WriteString("    \\new Staff \\with { instrumentName = #\"Melody\" shortInstrumentName = #\"Mel.\" } {\n")
+		buf.WriteString("    \\new GrandStaff \\with {\n")
+		buf.WriteString("      \\override StaffGrouper.staff-staff-spacing =\n")
+		buf.WriteString("        #'((basic-distance . 11)\n")
+		buf.WriteString("           (minimum-distance . 8)\n")
+		buf.WriteString("           (padding . 3.5)\n")
+		buf.WriteString("           (stretchability . 4))\n")
+		buf.WriteString("      \\override StaffGrouper.staffgroup-staff-spacing =\n")
+		buf.WriteString("        #'((basic-distance . 15)\n")
+		buf.WriteString("           (minimum-distance . 11)\n")
+		buf.WriteString("           (padding . 5)\n")
+		buf.WriteString("           (stretchability . 8))\n")
+		buf.WriteString("    } <<\n")
+		buf.WriteString("      \\new Staff \\with { instrumentName = #\"Melody\" shortInstrumentName = #\"Mel.\" } {\n")
+		buf.WriteString("        \\clef treble\n")
+		buf.WriteString(fmt.Sprintf("        \\key %s\n", keyLily))
+		buf.WriteString(fmt.Sprintf("        \\time %d/%d\n", timeBeats, timeBeatType))
+		buf.WriteString("        \\new Voice { \\melodyVoice }\n")
+		buf.WriteString("      }\n")
+		buf.WriteString("      \\new Staff \\with { instrumentName = #\"Guide Tones\" shortInstrumentName = #\"G.T.\" } {\n")
+		buf.WriteString("        \\clef treble\n")
+		buf.WriteString(fmt.Sprintf("        \\key %s\n", keyLily))
+		buf.WriteString(fmt.Sprintf("        \\time %d/%d\n", timeBeats, timeBeatType))
+		buf.WriteString("        <<\n")
+		buf.WriteString("          \\new Voice { \\voiceOne \\voiceUpper }\n")
+		buf.WriteString("          \\new Voice { \\voiceTwo \\voiceLower }\n")
+		buf.WriteString("        >>\n")
+		buf.WriteString("      }\n")
+		buf.WriteString("    >>\n")
+	} else {
+		buf.WriteString("    \\new Staff {\n")
 		buf.WriteString("      \\clef treble\n")
 		buf.WriteString(fmt.Sprintf("      \\key %s\n", keyLily))
 		buf.WriteString(fmt.Sprintf("      \\time %d/%d\n", timeBeats, timeBeatType))
-		buf.WriteString("      \\new Voice { \\melodyVoice }\n")
+		buf.WriteString("      <<\n")
+		buf.WriteString("        \\new Voice { \\voiceOne \\voiceUpper }\n")
+		buf.WriteString("        \\new Voice { \\voiceTwo \\voiceLower }\n")
+		buf.WriteString("      >>\n")
 		buf.WriteString("    }\n")
-		buf.WriteString("    \\new Staff \\with { instrumentName = #\"Guide Tones\" shortInstrumentName = #\"G.T.\" } {\n")
-	} else {
-		buf.WriteString("    \\new Staff {\n")
 	}
-	buf.WriteString("      \\clef treble\n")
-	buf.WriteString(fmt.Sprintf("      \\key %s\n", keyLily))
-	buf.WriteString(fmt.Sprintf("      \\time %d/%d\n", timeBeats, timeBeatType))
-	buf.WriteString("      <<\n")
-	buf.WriteString("        \\new Voice { \\voiceOne \\voiceUpper }\n")
-	buf.WriteString("        \\new Voice { \\voiceTwo \\voiceLower }\n")
-	buf.WriteString("      >>\n")
-	buf.WriteString("    }\n")
 	buf.WriteString("  >>\n")
 	buf.WriteString("  \\layout { }\n")
 	buf.WriteString("}\n")
 
 	return buf.String(), nil
+}
+
+// writeLilyPondRests decomposes a remainder duration (in quarter beats) into standard LilyPond rests.
+func writeLilyPondRests(buf *bytes.Buffer, rem float64) {
+	sixteenths := int(math.Round(rem * 4.0))
+	for sixteenths > 0 {
+		switch {
+		case sixteenths >= 16:
+			buf.WriteString("r1 ")
+			sixteenths -= 16
+		case sixteenths >= 12:
+			buf.WriteString("r2. ")
+			sixteenths -= 12
+		case sixteenths >= 8:
+			buf.WriteString("r2 ")
+			sixteenths -= 8
+		case sixteenths >= 6:
+			buf.WriteString("r4. ")
+			sixteenths -= 6
+		case sixteenths >= 4:
+			buf.WriteString("r4 ")
+			sixteenths -= 4
+		case sixteenths >= 3:
+			buf.WriteString("r8. ")
+			sixteenths -= 3
+		case sixteenths >= 2:
+			buf.WriteString("r8 ")
+			sixteenths -= 2
+		default:
+			buf.WriteString("r16 ")
+			sixteenths -= 1
+		}
+	}
 }
 
 // generateMelodyTrack generates LilyPond notes for the primary lead sheet melody.
@@ -413,34 +628,114 @@ func generateMelodyTrack(tune *Tune, barsPerLine int) string {
 		}
 
 		if len(m.Melody) == 0 {
-			buf.WriteString(fmt.Sprintf("  R%s |%s\n", lilypondDuration(beats), breakSuffix))
+			buf.WriteString(fmt.Sprintf("  %s |%s\n", fullMeasureRest(m.TimeBeats, m.TimeBeatType), breakSuffix))
 			continue
 		}
 
-		buf.WriteString("  ")
-		consumed := 0.0
+		type noteGroup struct {
+			beatOffset float64
+			duration   float64
+			isRest     bool
+			pitches    []Pitch
+			tie        string
+		}
+
+		var groups []noteGroup
 		for _, mn := range m.Melody {
 			dur := mn.DurationBeats
 			if dur <= 0 {
 				dur = 0.5
 			}
-			durStr := lilypondDuration(dur)
 			if mn.IsRest || mn.Pitch == nil {
-				buf.WriteString(fmt.Sprintf("r%s ", durStr))
+				groups = append(groups, noteGroup{
+					beatOffset: mn.BeatOffset,
+					duration:   dur,
+					isRest:     true,
+				})
 			} else {
 				p := *mn.Pitch
 				p.Octave = mn.Octave
-				pStr := lilypondPitch(p)
-				tieSuffix := ""
-				if mn.Tie == "start" {
-					tieSuffix = " ~"
+				// If this note is flagged as a chord or shares the beat offset of the previous note, group together
+				if len(groups) > 0 && !groups[len(groups)-1].isRest &&
+					(mn.IsChord || math.Abs(mn.BeatOffset-groups[len(groups)-1].beatOffset) < 0.02) {
+					last := &groups[len(groups)-1]
+					last.pitches = append(last.pitches, p)
+					if mn.Tie != "" {
+						last.tie = mn.Tie
+					}
+					if dur > last.duration {
+						last.duration = dur
+					}
+				} else {
+					groups = append(groups, noteGroup{
+						beatOffset: mn.BeatOffset,
+						duration:   dur,
+						isRest:     false,
+						pitches:    []Pitch{p},
+						tie:        mn.Tie,
+					})
 				}
-				buf.WriteString(fmt.Sprintf("%s%s%s ", pStr, durStr, tieSuffix))
 			}
-			consumed += dur
 		}
-		if consumed < beats {
-			buf.WriteString(fmt.Sprintf("r%s ", lilypondDuration(beats-consumed)))
+
+		totalMeasureSixteenths := int(math.Round(beats * 4.0))
+		consumedSixteenths := 0
+
+		buf.WriteString("  ")
+		for _, grp := range groups {
+			targetOffsetSixteenths := int(math.Round(grp.beatOffset * 4.0))
+			if targetOffsetSixteenths > consumedSixteenths {
+				gapSixteenths := targetOffsetSixteenths - consumedSixteenths
+				writeLilyPondRests(&buf, float64(gapSixteenths)/4.0)
+				consumedSixteenths += gapSixteenths
+			}
+
+			parts := decomposeDuration(grp.duration)
+			grpSixteenths := 0
+			for _, d := range parts {
+				grpSixteenths += durationToSixteenths(d)
+			}
+			if consumedSixteenths+grpSixteenths > totalMeasureSixteenths {
+				availSixteenths := totalMeasureSixteenths - consumedSixteenths
+				if availSixteenths <= 0 {
+					break
+				}
+				parts = decomposeDuration(float64(availSixteenths) / 4.0)
+			}
+
+			if grp.isRest {
+				for _, d := range parts {
+					buf.WriteString(fmt.Sprintf("r%s ", d))
+					consumedSixteenths += durationToSixteenths(d)
+				}
+			} else if len(grp.pitches) == 1 {
+				for pIdx, d := range parts {
+					tie := ""
+					if pIdx < len(parts)-1 || grp.tie == "start" {
+						tie = " ~"
+					}
+					buf.WriteString(fmt.Sprintf("%s%s%s ", lilypondPitch(grp.pitches[0]), d, tie))
+					consumedSixteenths += durationToSixteenths(d)
+				}
+			} else {
+				var chordPitches []string
+				for _, p := range grp.pitches {
+					chordPitches = append(chordPitches, lilypondPitch(p))
+				}
+				chordStr := fmt.Sprintf("<%s>", strings.Join(chordPitches, " "))
+				for pIdx, d := range parts {
+					tie := ""
+					if pIdx < len(parts)-1 || grp.tie == "start" {
+						tie = " ~"
+					}
+					buf.WriteString(fmt.Sprintf("%s%s%s ", chordStr, d, tie))
+					consumedSixteenths += durationToSixteenths(d)
+				}
+			}
+		}
+
+		if consumedSixteenths < totalMeasureSixteenths {
+			writeLilyPondRests(&buf, float64(totalMeasureSixteenths-consumedSixteenths)/4.0)
 		}
 		buf.WriteString(fmt.Sprintf("|%s\n", breakSuffix))
 	}
@@ -491,32 +786,32 @@ func generateDevicesTrack(tune *Tune, devices []HarmonicDevice, barsPerLine int)
 			if shouldStop && shouldStart {
 				d := startDevs[0]
 				writeSpannerOverrides(&buf, d)
-				mult := int(beats*4.0 - 1)
+				mult := int(math.Round(beats*4.0)) - 1
 				if mult < 1 {
 					mult = 1
 				}
 				buf.WriteString(fmt.Sprintf("s16\\stopTextSpan s16*%d\\startTextSpan |%s\n", mult, breakSuffix))
 				activeSpanner = true
 			} else if shouldStop {
-				buf.WriteString(fmt.Sprintf("s%s\\stopTextSpan |%s\n", lilypondDuration(beats), breakSuffix))
+				buf.WriteString(fmt.Sprintf("%s\\stopTextSpan |%s\n", lilypondSkip(beats), breakSuffix))
 				activeSpanner = false
 			} else if shouldStart {
 				d := startDevs[0]
 				writeSpannerOverrides(&buf, d)
-				buf.WriteString(fmt.Sprintf("s%s\\startTextSpan |%s\n", lilypondDuration(beats), breakSuffix))
+				buf.WriteString(fmt.Sprintf("%s\\startTextSpan |%s\n", lilypondSkip(beats), breakSuffix))
 				activeSpanner = true
 			} else {
-				buf.WriteString(fmt.Sprintf("s%s |%s\n", lilypondDuration(beats), breakSuffix))
+				buf.WriteString(fmt.Sprintf("%s |%s\n", lilypondSkip(beats), breakSuffix))
 			}
 			continue
 		}
 
 		cPos := 0.0
 		for _, tc := range m.Chords {
-			if tc.BeatOffset > cPos {
+			if tc.BeatOffset > cPos+0.05 {
 				gap := tc.BeatOffset - cPos
-				buf.WriteString(fmt.Sprintf("s%s ", lilypondDuration(gap)))
-				cPos += gap
+				buf.WriteString(fmt.Sprintf("%s ", lilypondSkip(gap)))
+				cPos = tc.BeatOffset
 			}
 
 			stopDevs := stopsAt[keyForPos(mIdx, tc.BeatOffset)]
@@ -526,50 +821,49 @@ func generateDevicesTrack(tune *Tune, devices []HarmonicDevice, barsPerLine int)
 			shouldStop := activeSpanner && len(stopDevs) > 0
 			shouldStart := len(startDevs) > 0
 
+			mult := int(math.Round(dur*4.0)) - 1
+			if mult < 1 {
+				mult = 1
+			}
+
 			if shouldStop && shouldStart {
 				d := startDevs[0]
 				writeSpannerOverrides(&buf, d)
-				mult := int(dur*4.0 - 1)
-				if mult < 1 {
-					mult = 1
-				}
 				buf.WriteString(fmt.Sprintf("s16\\stopTextSpan s16*%d\\startTextSpan ", mult))
 				activeSpanner = true
 			} else if shouldStop {
-				buf.WriteString(fmt.Sprintf("s%s\\stopTextSpan ", lilypondDuration(dur)))
+				buf.WriteString(fmt.Sprintf("%s\\stopTextSpan ", lilypondSkip(dur)))
 				activeSpanner = false
 			} else if shouldStart {
 				d := startDevs[0]
 				writeSpannerOverrides(&buf, d)
 				// Check if this same chord also stops the device at its end
 				if len(stopsAt[keyForPos(mIdx, tc.BeatOffset+dur)]) > 0 {
-					mult := int(dur*4.0 - 1)
 					if mult < 1 {
-						buf.WriteString(fmt.Sprintf("s%s\\startTextSpan\\stopTextSpan ", lilypondDuration(dur)))
+						buf.WriteString(fmt.Sprintf("%s\\startTextSpan\\stopTextSpan ", lilypondSkip(dur)))
 					} else {
 						buf.WriteString(fmt.Sprintf("s16*%d\\startTextSpan s16\\stopTextSpan ", mult))
 					}
 					activeSpanner = false
 				} else {
-					buf.WriteString(fmt.Sprintf("s%s\\startTextSpan ", lilypondDuration(dur)))
+					buf.WriteString(fmt.Sprintf("%s\\startTextSpan ", lilypondSkip(dur)))
 					activeSpanner = true
 				}
 			} else if activeSpanner && len(stopsAt[keyForPos(mIdx, tc.BeatOffset+dur)]) > 0 {
-				mult := int(dur*4.0 - 1)
 				if mult < 1 {
-					buf.WriteString(fmt.Sprintf("s%s\\stopTextSpan ", lilypondDuration(dur)))
+					buf.WriteString(fmt.Sprintf("%s\\stopTextSpan ", lilypondSkip(dur)))
 				} else {
 					buf.WriteString(fmt.Sprintf("s16*%d s16\\stopTextSpan ", mult))
 				}
 				activeSpanner = false
 			} else {
-				buf.WriteString(fmt.Sprintf("s%s ", lilypondDuration(dur)))
+				buf.WriteString(fmt.Sprintf("%s ", lilypondSkip(dur)))
 			}
 			cPos += dur
 		}
 
-		if cPos < beats {
-			buf.WriteString(fmt.Sprintf("s%s ", lilypondDuration(beats-cPos)))
+		if beats-cPos > 0.05 {
+			buf.WriteString(fmt.Sprintf("%s ", lilypondSkip(beats-cPos)))
 		}
 		buf.WriteString(fmt.Sprintf("|%s\n", breakSuffix))
 	}

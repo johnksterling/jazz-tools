@@ -193,15 +193,22 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	// Run tonal center analysis and device detection
 	jazz.AnalyzeTonalCenters(tune)
 	devices := jazz.DetectHarmonicDevices(tune)
+	if devices == nil {
+		devices = []jazz.HarmonicDevice{}
+	}
 	journeySpans := jazz.GetHarmonicJourneySpans(tune)
+	if journeySpans == nil {
+		journeySpans = []jazz.JourneySpan{}
+	}
 	journeyStr := jazz.HarmonicJourney(tune)
 
-	var measuresDTO []MeasureDTO
+	measuresDTO := make([]MeasureDTO, 0, len(tune.Measures))
 	pairIdx := 0
 
 	for _, m := range tune.Measures {
 		mDTO := MeasureDTO{
 			Number: m.Number,
+			Chords: make([]ChordDTO, 0, len(m.Chords)),
 		}
 		for _, tc := range m.Chords {
 			var p jazz.GuideTonePair

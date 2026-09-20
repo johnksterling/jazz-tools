@@ -157,4 +157,18 @@ func TestAnalyzeEndpoint_StandardAutumnLeaves(t *testing.T) {
 	if len(resp.Measures) == 0 {
 		t.Errorf("expected measures in Autumn Leaves, got 0")
 	}
+
+	rawJSON := rec.Body.String()
+	if strings.Contains(rawJSON, `"chords":null`) {
+		t.Errorf("expected non-null chords in JSON, but found '\"chords\":null'")
+	}
+	if resp.Measures[0].Chords == nil {
+		t.Errorf("expected Measure[0].Chords to be non-nil empty slice, got nil")
+	}
+	if resp.Devices == nil {
+		t.Errorf("expected Devices to be non-nil slice, got nil")
+	}
+	if resp.JourneySpans == nil {
+		t.Errorf("expected JourneySpans to be non-nil slice, got nil")
+	}
 }

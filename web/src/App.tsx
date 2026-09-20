@@ -490,7 +490,7 @@ export const App: React.FC = () => {
                     Key: {analysis.key || 'Modal/C'}
                   </span>
                   <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold">
-                    Time: {analysis.timeSignature[0]}/{analysis.timeSignature[1]}
+                    Time: {analysis.timeSignature ? `${analysis.timeSignature[0]}/${analysis.timeSignature[1]}` : '4/4'}
                   </span>
                   <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold">
                     {analysis.measureCount} Measures

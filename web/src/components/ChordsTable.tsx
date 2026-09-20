@@ -4,6 +4,9 @@ import { MeasureDTO } from '../types';
 export const ChordsTable: React.FC<{ measures: MeasureDTO[] }> = ({ measures }) => {
   if (!measures || measures.length === 0) return null;
 
+  const hasAnyChords = measures.some((m) => m.chords && m.chords.length > 0);
+  if (!hasAnyChords) return null;
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
       <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
@@ -25,7 +28,7 @@ export const ChordsTable: React.FC<{ measures: MeasureDTO[] }> = ({ measures }) 
           </thead>
           <tbody className="divide-y divide-slate-100 font-mono">
             {measures.flatMap((m) =>
-              m.chords.map((c, cIdx) => (
+              (m.chords || []).map((c, cIdx) => (
                 <tr key={`${m.number}-${cIdx}`} className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-2 px-4 font-semibold text-slate-700">
                     {cIdx === 0 ? m.number : ''}

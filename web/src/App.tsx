@@ -39,6 +39,8 @@ export const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
   const [scoreXml, setScoreXml] = useState<string | null>(null);
+  const [svgPages, setSvgPages] = useState<string[] | null>(null);
+  const [loadingSvg, setLoadingSvg] = useState<boolean>(false);
   const [downloadingPdf, setDownloadingPdf] = useState<boolean>(false);
 
   // Fetch samples and initial standard on mount
@@ -79,6 +81,7 @@ export const App: React.FC = () => {
   const triggerAnalyze = async (payload: { sample?: string; content?: string; file?: File; standard?: string }) => {
     setLoading(true);
     setError(null);
+    setSvgPages(null);
 
     try {
       let analyzeRes: Response;
@@ -133,6 +136,44 @@ export const App: React.FC = () => {
       } else {
         setScoreXml(null);
       }
+
+      // Fetch publication-grade LilyPond vector SVG asynchronously
+      setLoadingSvg(true);
+      (async () => {
+        try {
+          let svgRes: Response;
+          if (payload.file) {
+            const svgForm = new FormData();
+            svgForm.append('file', payload.file);
+            svgRes = await fetch('/api/companion/svg', {
+              method: 'POST',
+              body: svgForm,
+            });
+          } else {
+            const jsonBody = JSON.stringify({
+              sample: payload.sample,
+              content: payload.content,
+              standard: payload.standard,
+            });
+            svgRes = await fetch('/api/companion/svg', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: jsonBody,
+            });
+          }
+          if (svgRes.ok) {
+            const svgJson = await svgRes.json();
+            setSvgPages(svgJson.pages || null);
+          } else {
+            setSvgPages(null);
+          }
+        } catch (e) {
+          console.warn('LilyPond SVG fetch error:', e);
+          setSvgPages(null);
+        } finally {
+          setLoadingSvg(false);
+        }
+      })();
     } catch (err: any) {
       setError(err.message || 'An error occurred during analysis');
     } finally {
@@ -534,8 +575,15 @@ export const App: React.FC = () => {
             {/* Identified Devices */}
             <DevicesList devices={analysis.devices} />
 
-            {/* Interactive MusicXML Score Viewer */}
-            {scoreXml && <ScoreViewer xmlContent={scoreXml} hasMelody={analysis.hasMelody} />}
+            {/* Publication Score & Interactive MusicXML Viewer */}
+            {(scoreXml || svgPages || loadingSvg) && (
+              <ScoreViewer
+                xmlContent={scoreXml}
+                svgPages={svgPages}
+                hasMelody={analysis.hasMelody}
+                loadingSvg={loadingSvg}
+              />
+            )}
 
             {/* Measure & Chords Table */}
             <ChordsTable measures={analysis.measures} />

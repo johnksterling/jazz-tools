@@ -252,3 +252,216 @@ func TestTonalCenterDetectionTheNightHasAThousandEyes(t *testing.T) {
 		t.Errorf("expected span 2 to be G (bars 12-18), got %+v", spans[2])
 	}
 }
+
+func TestTonalCenterDetectionRecordaMe(t *testing.T) {
+	// Construct Joe Henderson's "Recorda Me" (16 bars):
+	// Bars 1-4: Am7 with prominent F# in melody -> A Dorian (parent: G major / 1 sharp)
+	// Bars 5-7: Cm7 with prominent A♮ in melody -> C Dorian (parent: Bb major / 2 flats)
+	// Bars 8-9: Cm7 - F7 -> Bbmaj7
+	// Bars 10-11: Bbm7 - Eb7 -> Abmaj7
+	// Bars 12-13: Abm7 - Db7 -> Gbmaj7
+	// Bars 14-15: Gm7 - C7 -> Fmaj7
+	// Bar 16: E7#9 (turnaround resolving to A dorian)
+	tune := &Tune{
+		Title:         "Recorda Me",
+		Composer:      "Joe Henderson",
+		Key:           "A minor",
+		TimeSignature: [2]int{4, 4},
+		Measures:      make([]TimedMeasure, 16),
+	}
+
+	for i := range tune.Measures {
+		tune.Measures[i].Number = i + 1
+	}
+
+	// Bars 1-4: Am7 with F# in melody
+	pE4, _ := ParsePitch("E4")
+	pG4, _ := ParsePitch("G4")
+	pFSharp4, _ := ParsePitch("F#4")
+	pD4, _ := ParsePitch("D4")
+	pC4, _ := ParsePitch("C4")
+	pB3, _ := ParsePitch("B3")
+	pA3, _ := ParsePitch("A3")
+
+	am7, _ := ParseChord("Am7")
+	for m := 0; m < 4; m++ {
+		tune.Measures[m].Chords = []TimedChord{
+			{Chord: am7, MeasureNumber: m + 1, BeatOffset: 0.0, DurationBeats: 4.0},
+		}
+		tune.Measures[m].Melody = []MelodyNote{
+			{Pitch: &pE4, DurationBeats: 1.0, BeatOffset: 0.0},
+			{Pitch: &pG4, DurationBeats: 1.0, BeatOffset: 1.0},
+			{Pitch: &pFSharp4, DurationBeats: 2.0, BeatOffset: 2.0}, // Prominent F# (Dorian 6th)
+		}
+	}
+
+	// Bars 5-7: Cm7 with A natural in melody
+	pBb4, _ := ParsePitch("Bb4")
+	pA4, _ := ParsePitch("A4")
+	pF4, _ := ParsePitch("F4")
+	pEb4, _ := ParsePitch("Eb4")
+
+	cm7, _ := ParseChord("Cm7")
+	for m := 4; m < 7; m++ {
+		tune.Measures[m].Chords = []TimedChord{
+			{Chord: cm7, MeasureNumber: m + 1, BeatOffset: 0.0, DurationBeats: 4.0},
+		}
+		tune.Measures[m].Melody = []MelodyNote{
+			{Pitch: &pG4, DurationBeats: 1.0, BeatOffset: 0.0},
+			{Pitch: &pBb4, DurationBeats: 1.0, BeatOffset: 1.0},
+			{Pitch: &pA4, DurationBeats: 2.0, BeatOffset: 2.0}, // Prominent A♮ (Dorian 6th)
+		}
+	}
+
+	f7, _ := ParseChord("F7")
+	bbMaj7, _ := ParseChord("Bbmaj7")
+	bbm7, _ := ParseChord("Bbm7")
+	eb7, _ := ParseChord("Eb7")
+	abMaj7, _ := ParseChord("Abmaj7")
+	abm7, _ := ParseChord("Abm7")
+	db7, _ := ParseChord("Db7")
+	gbMaj7, _ := ParseChord("Gbmaj7")
+	gm7, _ := ParseChord("Gm7")
+	c7, _ := ParseChord("C7")
+	fMaj7, _ := ParseChord("Fmaj7")
+	e7, _ := ParseChord("E7")
+
+	// Bar 8: Cm7 (2 beats), F7 (2 beats)
+	tune.Measures[7].Chords = []TimedChord{
+		{Chord: cm7, MeasureNumber: 8, BeatOffset: 0.0, DurationBeats: 2.0},
+		{Chord: f7, MeasureNumber: 8, BeatOffset: 2.0, DurationBeats: 2.0},
+	}
+	// Bar 9: Bbmaj7
+	tune.Measures[8].Chords = []TimedChord{
+		{Chord: bbMaj7, MeasureNumber: 9, BeatOffset: 0.0, DurationBeats: 4.0},
+	}
+	// Bar 10: Bbm7 (2), Eb7 (2)
+	tune.Measures[9].Chords = []TimedChord{
+		{Chord: bbm7, MeasureNumber: 10, BeatOffset: 0.0, DurationBeats: 2.0},
+		{Chord: eb7, MeasureNumber: 10, BeatOffset: 2.0, DurationBeats: 2.0},
+	}
+	// Bar 11: Abmaj7
+	tune.Measures[10].Chords = []TimedChord{
+		{Chord: abMaj7, MeasureNumber: 11, BeatOffset: 0.0, DurationBeats: 4.0},
+	}
+	// Bar 12: Abm7 (2), Db7 (2)
+	tune.Measures[11].Chords = []TimedChord{
+		{Chord: abm7, MeasureNumber: 12, BeatOffset: 0.0, DurationBeats: 2.0},
+		{Chord: db7, MeasureNumber: 12, BeatOffset: 2.0, DurationBeats: 2.0},
+	}
+	// Bar 13: Gbmaj7
+	tune.Measures[12].Chords = []TimedChord{
+		{Chord: gbMaj7, MeasureNumber: 13, BeatOffset: 0.0, DurationBeats: 4.0},
+	}
+	// Bar 14: Gm7 (2), C7 (2)
+	tune.Measures[13].Chords = []TimedChord{
+		{Chord: gm7, MeasureNumber: 14, BeatOffset: 0.0, DurationBeats: 2.0},
+		{Chord: c7, MeasureNumber: 14, BeatOffset: 2.0, DurationBeats: 2.0},
+	}
+	// Bar 15: Fmaj7
+	tune.Measures[14].Chords = []TimedChord{
+		{Chord: fMaj7, MeasureNumber: 15, BeatOffset: 0.0, DurationBeats: 4.0},
+	}
+	// Bar 16: E7
+	tune.Measures[15].Chords = []TimedChord{
+		{Chord: e7, MeasureNumber: 16, BeatOffset: 0.0, DurationBeats: 4.0},
+	}
+
+	AnalyzeTonalCenters(tune)
+	spans := GetHarmonicJourneySpans(tune)
+
+	t.Logf("Recorda Me Harmonic Journey: %s", HarmonicJourney(tune))
+
+	if len(spans) < 7 {
+		t.Fatalf("expected at least 7 journey spans for Recorda Me, got %d", len(spans))
+	}
+
+	// 1. Bars 1-4: A Dorian (parent: G major notes)
+	if spans[0].Center != "A dorian" || spans[0].ParentKey != "G" || spans[0].StartBar != 1 || spans[0].EndBar != 4 {
+		t.Errorf("expected span 0 to be A dorian (G notes, bars 1-4), got %+v", spans[0])
+	}
+
+	// 2. Bars 5-7: C Dorian (parent: Bb major notes)
+	if spans[1].Center != "C dorian" || spans[1].ParentKey != "Bb" || spans[1].StartBar != 5 || spans[1].EndBar != 7 {
+		t.Errorf("expected span 1 to be C dorian (Bb notes, bars 5-7), got %+v", spans[1])
+	}
+
+	// 3. Bars 8-9: Bb major
+	if spans[2].Center != "Bb" || spans[2].StartBar != 8 || spans[2].EndBar != 9 {
+		t.Errorf("expected span 2 to be Bb (bars 8-9), got %+v", spans[2])
+	}
+
+	// 4. Bars 10-11: Ab major
+	if spans[3].Center != "Ab" || spans[3].StartBar != 10 || spans[3].EndBar != 11 {
+		t.Errorf("expected span 3 to be Ab (bars 10-11), got %+v", spans[3])
+	}
+
+	// 5. Bars 12-13: Gb major
+	if spans[4].Center != "Gb" || spans[4].StartBar != 12 || spans[4].EndBar != 13 {
+		t.Errorf("expected span 4 to be Gb (bars 12-13), got %+v", spans[4])
+	}
+
+	// 6. Bars 14-15: F major
+	if spans[5].Center != "F" || spans[5].StartBar != 14 || spans[5].EndBar != 15 {
+		t.Errorf("expected span 5 to be F (bars 14-15), got %+v", spans[5])
+	}
+
+	// 7. Bar 16: A dorian turnaround
+	if spans[6].Center != "A dorian" || spans[6].StartBar != 16 || spans[6].EndBar != 16 {
+		t.Errorf("expected span 6 to be A dorian (bar 16), got %+v", spans[6])
+	}
+
+	// Verify distinct high-contrast colors are assigned to each modulation
+	colors := make(map[string]string)
+	for i := 0; i < 6; i++ {
+		center := spans[i].Center
+		color := spans[i].ColorHex
+		if prevCenter, exists := colors[color]; exists {
+			t.Errorf("duplicate color %s assigned to %s and %s", color, prevCenter, center)
+		}
+		colors[color] = center
+	}
+
+	// Also verify that without F#, a minor tune with F natural stays natural minor (A min)
+	tuneNatural := &Tune{
+		Title:         "Natural Minor Tune",
+		Key:           "A minor",
+		TimeSignature: [2]int{4, 4},
+		Measures:      make([]TimedMeasure, 2),
+	}
+	tuneNatural.Measures[0].Number = 1
+	tuneNatural.Measures[1].Number = 2
+	pF4Natural, _ := ParsePitch("F4")
+	tuneNatural.Measures[0].Chords = []TimedChord{{Chord: am7, MeasureNumber: 1, BeatOffset: 0.0, DurationBeats: 4.0}}
+	tuneNatural.Measures[0].Melody = []MelodyNote{{Pitch: &pF4Natural, DurationBeats: 2.0, BeatOffset: 0.0}}
+	tuneNatural.Measures[1].Chords = []TimedChord{{Chord: am7, MeasureNumber: 2, BeatOffset: 0.0, DurationBeats: 4.0}}
+	AnalyzeTonalCenters(tuneNatural)
+	spansNat := GetHarmonicJourneySpans(tuneNatural)
+	if spansNat[0].Center != "A min" {
+		t.Errorf("expected natural minor tune with F natural to stay 'A min', got %s", spansNat[0].Center)
+	}
+
+	// Also verify that an Am6 chord detects as A dorian even without melody
+	am6, _ := ParseChord("Am6")
+	tuneM6 := &Tune{
+		Title:         "Am6 Vamp",
+		Key:           "A minor",
+		TimeSignature: [2]int{4, 4},
+		Measures:      make([]TimedMeasure, 2),
+	}
+	tuneM6.Measures[0].Number = 1
+	tuneM6.Measures[1].Number = 2
+	tuneM6.Measures[0].Chords = []TimedChord{{Chord: am6, MeasureNumber: 1, BeatOffset: 0.0, DurationBeats: 4.0}}
+	tuneM6.Measures[1].Chords = []TimedChord{{Chord: am6, MeasureNumber: 2, BeatOffset: 0.0, DurationBeats: 4.0}}
+	AnalyzeTonalCenters(tuneM6)
+	spansM6 := GetHarmonicJourneySpans(tuneM6)
+	if spansM6[0].Center != "A dorian" {
+		t.Errorf("expected Am6 chord to detect as 'A dorian', got %s", spansM6[0].Center)
+	}
+	_ = pD4
+	_ = pC4
+	_ = pB3
+	_ = pA3
+	_ = pF4
+	_ = pEb4
+}

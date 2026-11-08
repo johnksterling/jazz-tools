@@ -16,6 +16,7 @@ const (
 	DeviceTurnaround        DeviceType = "Turnaround"
 	DeviceChromaticNeighbor DeviceType = "Chromatic Neighbor"
 	DeviceModalInterchange  DeviceType = "Modal Interchange"
+	DeviceBackdoorDominant  DeviceType = "Backdoor Resolution"
 )
 
 // HarmonicDevice describes an identified harmonic device spanning one or more chords.
@@ -153,6 +154,16 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 						actualC3.Chord.Quality == QualityMinor6 {
 						isMinor = true
 					}
+				} else if actualC3 != nil && (actualC3.Chord.Root.Name() == homeRoot || (actualC3.TonalCenter != "" && actualC3.Chord.Root.Name() == strings.Fields(actualC3.TonalCenter)[0])) &&
+					semitoneDistance(actualC3.Chord.Root.Name(), lastV.Chord.Root.Name()) == 10 {
+					// Backdoor resolution! (e.g. Fm7 Bb7 -> Cmaj7 in Lady Bird)
+					resolves = true
+					endMeasure = actualC3.MeasureIndex
+					endBeat = actualC3.BeatOffset
+					targetName = actualC3.TonalCenter
+					if targetName == "" {
+						targetName = homeKeyName
+					}
 				}
 
 				label := "ii - V"
@@ -161,6 +172,9 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 					label = "iiø - V"
 					devType = DeviceMinorTwoFive
 					targetName += " min"
+				} else if resolves && actualC3 != nil && semitoneDistance(actualC3.Chord.Root.Name(), lastV.Chord.Root.Name()) == 10 {
+					label = "iv - bVII7 (backdoor)"
+					devType = DeviceBackdoorDominant
 				}
 
 				tcInfo := GetTonalCenterInfo(targetName)
@@ -418,6 +432,127 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 					i++
 					continue
 				}
+			}
+		}
+
+		// ---------------------------------------------------------
+		// 7. Check Minor Key Modal Interchange / Diatonic Devices (bIIΔ Phrygian, bVIΔ, iv-7, IΔ)
+		// ---------------------------------------------------------
+		if homeMode == "minor" {
+			dHome := semitoneDistance(homeRoot, c1.Chord.Root.Name())
+			if c1.Chord.Quality == QualityMajor7 {
+				label := ""
+				switch dHome {
+				case 1:
+					label = "bIIΔ (Phrygian chord)"
+				case 8:
+					label = "bVIΔ (submediant)"
+				case 0:
+					label = "IΔ (Picardy third)"
+				}
+				if label != "" {
+					tcInfo := GetTonalCenterInfo(homeKeyName)
+					devices = append(devices, HarmonicDevice{
+						Type:          DeviceModalInterchange,
+						Label:         label,
+						StartMeasure:  c1.MeasureIndex,
+						StartBeat:     c1.BeatOffset,
+						EndMeasure:    c1.MeasureIndex,
+						EndBeat:       c1.BeatOffset + c1.DurationBeats,
+						Resolves:      false,
+						TargetKey:     homeKeyName,
+						LilyPondColor: tcInfo.LilyPondColor,
+						IsDashed:      false,
+					})
+					i++
+					continue
+				}
+			} else if c1.Chord.Quality == QualityMinor7 || c1.Chord.Quality == QualityMinorTriad {
+				if dHome == 5 {
+					tcInfo := GetTonalCenterInfo(homeKeyName)
+					devices = append(devices, HarmonicDevice{
+						Type:          DeviceModalInterchange,
+						Label:         "iv-7 (subdominant minor)",
+						StartMeasure:  c1.MeasureIndex,
+						StartBeat:     c1.BeatOffset,
+						EndMeasure:    c1.MeasureIndex,
+						EndBeat:       c1.BeatOffset + c1.DurationBeats,
+						Resolves:      false,
+						TargetKey:     homeKeyName,
+						LilyPondColor: tcInfo.LilyPondColor,
+						IsDashed:      false,
+					})
+					i++
+					continue
+				}
+			}
+		}
+
+		// ---------------------------------------------------------
+		// 8. Check Backdoor Dominant Resolution (bVII7 -> I) & Tritone Sub to Minor (bII7 -> i)
+		// ---------------------------------------------------------
+		if c1.Chord.Quality == QualityDominant7 && c2 != nil {
+			targetRoot := c2.Chord.Root.Name()
+			dTarget := semitoneDistance(targetRoot, c1.Chord.Root.Name())
+
+			// Backdoor dominant resolution (dTarget == 10, i.e. bVII7 resolving up whole step to I)
+			if dTarget == 10 && (targetRoot == homeRoot || (c2.TonalCenter != "" && targetRoot == strings.Fields(c2.TonalCenter)[0])) {
+				targetKey := c2.TonalCenter
+				if targetKey == "" {
+					targetKey = homeKeyName
+				}
+				tcInfo := GetTonalCenterInfo(targetKey)
+
+				label := "bVII7 (backdoor)"
+				startMeas := c1.MeasureIndex
+				startBeat := c1.BeatOffset
+				if i > 0 && (chords[i-1].Chord.Quality == QualityMinor7 || chords[i-1].Chord.Quality == QualityMinorTriad) &&
+					semitoneDistance(chords[i-1].Chord.Root.Name(), c1.Chord.Root.Name()) == 5 {
+					label = "iv - bVII7 (backdoor)"
+					startMeas = chords[i-1].MeasureIndex
+					startBeat = chords[i-1].BeatOffset
+				}
+
+				devices = append(devices, HarmonicDevice{
+					Type:          DeviceBackdoorDominant,
+					Label:         label,
+					StartMeasure:  startMeas,
+					StartBeat:     startBeat,
+					EndMeasure:    c2.MeasureIndex,
+					EndBeat:       c2.BeatOffset,
+					Resolves:      true,
+					TargetKey:     targetKey,
+					LilyPondColor: tcInfo.LilyPondColor,
+					IsDashed:      true,
+				})
+
+				i++
+				continue
+			}
+
+			// Tritone sub to tonic minor / Phrygian dominant (dTarget == 1, i.e. bII7 resolving down half-step to i)
+			if dTarget == 1 && (targetRoot == homeRoot || (c2.TonalCenter != "" && targetRoot == strings.Fields(c2.TonalCenter)[0])) {
+				targetKey := c2.TonalCenter
+				if targetKey == "" {
+					targetKey = homeKeyName
+				}
+				tcInfo := GetTonalCenterInfo(targetKey)
+
+				devices = append(devices, HarmonicDevice{
+					Type:          DeviceTritoneSub,
+					Label:         "subV7 / i (tritone sub)",
+					StartMeasure:  c1.MeasureIndex,
+					StartBeat:     c1.BeatOffset,
+					EndMeasure:    c2.MeasureIndex,
+					EndBeat:       c2.BeatOffset,
+					Resolves:      true,
+					TargetKey:     targetKey,
+					LilyPondColor: tcInfo.LilyPondColor,
+					IsDashed:      true,
+				})
+
+				i++
+				continue
 			}
 		}
 

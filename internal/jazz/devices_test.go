@@ -1,6 +1,7 @@
 package jazz
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -134,4 +135,65 @@ func TestDetectHarmonicDevices_Beatrice(t *testing.T) {
 		t.Errorf("expected bar 8 Bbm7 to be recognized as iv-7 (minor subdominant)")
 	}
 }
+
+func TestDetectHarmonicDevices_LadyBird(t *testing.T) {
+	tune, err := LoadTune("Lady Bird")
+	if err != nil {
+		t.Fatalf("failed to load Lady Bird: %v", err)
+	}
+
+	devices := DetectHarmonicDevices(tune)
+	foundBackdoor := false
+	for _, d := range devices {
+		t.Logf("Lady Bird device: %s (bars %d-%d) resolves=%v", d.Label, d.StartMeasure+1, d.EndMeasure+1, d.Resolves)
+		if strings.Contains(d.Label, "backdoor") {
+			foundBackdoor = true
+		}
+	}
+
+	if !foundBackdoor {
+		t.Errorf("expected backdoor resolution device in Lady Bird (Fm7 Bb7 -> C)")
+	}
+}
+
+func TestDetectHarmonicDevices_Nardis(t *testing.T) {
+	tune, err := LoadTune("Nardis")
+	if err != nil {
+		t.Fatalf("failed to load Nardis: %v", err)
+	}
+
+	devices := DetectHarmonicDevices(tune)
+	foundPhrygian := false
+	for _, d := range devices {
+		t.Logf("Nardis device: %s (bars %d-%d) resolves=%v", d.Label, d.StartMeasure+1, d.EndMeasure+1, d.Resolves)
+		if strings.Contains(d.Label, "Phrygian") {
+			foundPhrygian = true
+		}
+	}
+
+	if !foundPhrygian {
+		t.Errorf("expected Phrygian chord device in Nardis (Fmaj7 in E minor)")
+	}
+}
+
+func TestDetectHarmonicDevices_NightInTunisia(t *testing.T) {
+	tune, err := LoadTune("A Night In Tunisia")
+	if err != nil {
+		t.Fatalf("failed to load A Night In Tunisia: %v", err)
+	}
+
+	devices := DetectHarmonicDevices(tune)
+	foundTritoneSub := false
+	for _, d := range devices {
+		t.Logf("Tunisia device: %s (bars %d-%d) resolves=%v", d.Label, d.StartMeasure+1, d.EndMeasure+1, d.Resolves)
+		if strings.Contains(d.Label, "tritone") || strings.Contains(d.Label, "subV") {
+			foundTritoneSub = true
+		}
+	}
+
+	if !foundTritoneSub {
+		t.Errorf("expected tritone sub device in A Night in Tunisia (Eb7 -> Dm or F7 -> Em)")
+	}
+}
+
 

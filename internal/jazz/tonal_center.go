@@ -251,11 +251,24 @@ func extractHomeKey(t *Tune) (string, string) {
 		return "C", "major"
 	}
 
-	parts := strings.Fields(key)
-	root := parts[0]
+	key = strings.TrimSpace(key)
+	root := key
 	mode := "major"
-	if len(parts) > 1 && strings.EqualFold(parts[1], "minor") {
+
+	if strings.HasSuffix(key, "-") {
+		root = strings.TrimSuffix(key, "-")
 		mode = "minor"
+	} else if strings.HasSuffix(key, "m") && len(key) > 1 && key[len(key)-2] != 'b' && key[len(key)-2] != '#' {
+		root = strings.TrimSuffix(key, "m")
+		mode = "minor"
+	} else {
+		parts := strings.Fields(key)
+		if len(parts) > 0 {
+			root = parts[0]
+		}
+		if len(parts) > 1 && (strings.EqualFold(parts[1], "minor") || strings.EqualFold(parts[1], "min") || strings.EqualFold(parts[1], "m")) {
+			mode = "minor"
+		}
 	}
 	return root, mode
 }
@@ -353,20 +366,33 @@ func AnalyzeTonalCenters(tune *Tune) {
 		// or borrowed modal interchange chord within the active/home key framework.
 		isNeighborOrModalInterchange := false
 
-		// Check A: Phrygian Chromatic Neighbor (Major 7th chord 1 semitone above previous chord)
-		// e.g. F^7 -> Gb^7 -> F^7 (Major) or D-7 -> Eb^7 -> D-7 (Minor)
-		if tc.Chord.Quality == QualityMajor7 && i > 0 {
-			prevTc := timedChords[i-1]
-			if semitoneDistance(prevTc.Chord.Root.Name(), tc.Chord.Root.Name()) == 1 {
-				// Returns to previous chord or resolves down a half-step
-				if nextTc != nil && nextTc.Chord.Root.Name() == prevTc.Chord.Root.Name() {
-					isNeighborOrModalInterchange = true
-					newCenter = activeCenter
-				} else if nextTc != nil && semitoneDistance(nextTc.Chord.Root.Name(), tc.Chord.Root.Name()) == 1 &&
-					(nextTc.Chord.Root.Name() == homeRoot || nextTc.Chord.Root.Name() == prevTc.Chord.Root.Name()) {
-					isNeighborOrModalInterchange = true
-					newCenter = activeCenter
+		// Check A: Phrygian Chromatic Neighbor (Major 7th chord 1 semitone above previous chord or resolving to tonic)
+		// e.g. F^7 -> Gb^7 -> F^7 (Major), D-7 -> Eb^7 -> D-7 (Minor), or F^7 -> E-7 (resolving to tonic)
+		if tc.Chord.Quality == QualityMajor7 {
+			if i > 0 {
+				prevTc := timedChords[i-1]
+				if semitoneDistance(prevTc.Chord.Root.Name(), tc.Chord.Root.Name()) == 1 {
+					// Returns to previous chord or resolves down a half-step
+					if nextTc != nil && nextTc.Chord.Root.Name() == prevTc.Chord.Root.Name() {
+						isNeighborOrModalInterchange = true
+						newCenter = activeCenter
+					} else if nextTc != nil && semitoneDistance(nextTc.Chord.Root.Name(), tc.Chord.Root.Name()) == 1 &&
+						(nextTc.Chord.Root.Name() == homeRoot || nextTc.Chord.Root.Name() == prevTc.Chord.Root.Name()) {
+						isNeighborOrModalInterchange = true
+						if nextTc.Chord.Root.Name() == homeRoot {
+							newCenter = homeKeyName
+						} else {
+							newCenter = activeCenter
+						}
+					}
 				}
+			}
+			// Resolving down a half-step directly to home tonic (e.g. F^7 -> E-7 in Nardis, or Gb^7 -> F^7)
+			if !isNeighborOrModalInterchange && nextTc != nil &&
+				semitoneDistance(nextTc.Chord.Root.Name(), tc.Chord.Root.Name()) == 1 &&
+				nextTc.Chord.Root.Name() == homeRoot {
+				isNeighborOrModalInterchange = true
+				newCenter = homeKeyName
 			}
 		}
 
@@ -394,8 +420,57 @@ func AnalyzeTonalCenters(tune *Tune) {
 			}
 		}
 
+		// Check C: Modal Interchange / Diatonic Chords in Home Minor Key (e.g. bIIΔ Phrygian, bVIΔ, iv-7, IΔ)
+		// Applies when home key is minor (e.g. Nardis in E minor)
+		if !isNeighborOrModalInterchange && activeCenter == homeKeyName && homeMode == "minor" {
+			dHome := semitoneDistance(homeRoot, tc.Chord.Root.Name())
+			if tc.Chord.Quality == QualityMajor7 {
+				// bIIΔ (Phrygian, d=1), bVIΔ (Aeolian submediant, d=8), IΔ (Picardy major, d=0)
+				if dHome == 1 || dHome == 8 || dHome == 0 {
+					isNeighborOrModalInterchange = true
+					newCenter = homeKeyName
+				}
+			} else if tc.Chord.Quality == QualityMinor7 || tc.Chord.Quality == QualityMinorTriad {
+				// iv-7 (minor subdominant, d=5)
+				if dHome == 5 {
+					isNeighborOrModalInterchange = true
+					newCenter = homeKeyName
+				}
+			}
+		}
+
+		// Check D: Dominant Resolutions without Modulation (Backdoor bVII7 -> I, and Tritone Sub bII7 -> i / I)
+		// e.g. Lady Bird bars 3-5: Fm7 Bb7 -> Cmaj7 (bVII7 resolving to I)
+		// e.g. A Night in Tunisia: Eb7 -> Dm or F7 -> Em (bII7 resolving to i)
+		// e.g. The Night Has a Thousand Eyes bar 12: F7 -> Gmaj7 (bVII7 resolving to I)
+		if !isNeighborOrModalInterchange && tc.Chord.Quality == QualityDominant7 && nextTc != nil {
+			nextRoot := nextTc.Chord.Root.Name()
+			dNext := semitoneDistance(nextRoot, tc.Chord.Root.Name())
+			// dNext == 10 is bVII7 resolving up whole step to nextRoot (e.g. Bb7 -> C, F7 -> G)
+			// dNext == 1 is bII7 resolving down half step to nextRoot (e.g. Eb7 -> Dm, F7 -> Em)
+			if (dNext == 10 || dNext == 1) && (nextRoot == homeRoot || nextRoot == strings.Fields(activeCenter)[0]) {
+				isNeighborOrModalInterchange = true
+				if nextRoot == homeRoot {
+					newCenter = homeKeyName
+				} else {
+					newCenter = activeCenter
+				}
+			}
+		}
+
+		// Check E: Minor Tonic chords with major 6th / major 7th (e.g. Dm6 in D minor, Em6 in E minor)
+		if !isNeighborOrModalInterchange && (tc.Chord.Quality == QualityMinor6 || tc.Chord.Quality == QualityMinorMajor7) {
+			if tc.Chord.Root.Name() == homeRoot && homeMode == "minor" {
+				isNeighborOrModalInterchange = true
+				newCenter = homeKeyName
+			} else if tc.Chord.Root.Name() == strings.Fields(activeCenter)[0] && strings.HasSuffix(activeCenter, "min") {
+				isNeighborOrModalInterchange = true
+				newCenter = activeCenter
+			}
+		}
+
 		// 4. Explicit Major 7th tonicization (if not neighbor or modal interchange)
-		if !isNeighborOrModalInterchange && tc.Chord.Quality == QualityMajor7 {
+		if newCenter == activeCenter && !isNeighborOrModalInterchange && tc.Chord.Quality == QualityMajor7 {
 			rootName := tc.Chord.Root.Name()
 			if rootName != activeCenter {
 				if rootName == homeKeyName {
@@ -407,7 +482,7 @@ func AnalyzeTonalCenters(tune *Tune) {
 		}
 
 		// 5. Explicit Minor 7th modulation (only if not neighbor or modal interchange)
-		if !isNeighborOrModalInterchange && (tc.Chord.Quality == QualityMinor7 || tc.Chord.Quality == QualityMinorTriad) && !fitsActive && !fitsHome {
+		if newCenter == activeCenter && !isNeighborOrModalInterchange && (tc.Chord.Quality == QualityMinor7 || tc.Chord.Quality == QualityMinorTriad) && !fitsActive && !fitsHome {
 			minKey := tc.Chord.Root.Name() + " min"
 			if minScale := scaleSets[minKey]; minScale != nil && chordFitsScale(tc.Chord, minScale) {
 				newCenter = minKey

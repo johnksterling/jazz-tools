@@ -173,6 +173,16 @@ func TestTonalCenterDetectionBeatrice(t *testing.T) {
 	if spans[2].Center != "F" || spans[2].StartBar != 13 || spans[2].EndBar != 16 {
 		t.Errorf("expected span 2 to be F (bars 13-16), got %+v", spans[2])
 	}
+	// Verify high-contrast color variety between home key (F) and modulation (D min)
+	if spans[0].ColorHex != "#1D4ED8" {
+		t.Errorf("expected span 0 (F) to have Royal Blue #1D4ED8, got %s", spans[0].ColorHex)
+	}
+	if spans[1].ColorHex != "#D97706" {
+		t.Errorf("expected span 1 (D min) to have Warm Amber #D97706, got %s", spans[1].ColorHex)
+	}
+	if spans[2].ColorHex != "#1D4ED8" {
+		t.Errorf("expected span 2 (F return) to have Royal Blue #1D4ED8, got %s", spans[2].ColorHex)
+	}
 }
 
 func TestTonalCenterDetectionNardis(t *testing.T) {

@@ -177,7 +177,7 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 					devType = DeviceBackdoorDominant
 				}
 
-				tcInfo := GetTonalCenterInfo(targetName)
+				tcInfo := GetTuneTonalCenterInfo(tune, targetName)
 
 				devices = append(devices, HarmonicDevice{
 					Type:          devType,
@@ -211,7 +211,7 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 				if c3.Chord.Quality == QualityMinor7 || c3.Chord.Quality == QualityMinorTriad {
 					targetName += " min"
 				}
-				tcInfo := GetTonalCenterInfo(targetName)
+				tcInfo := GetTuneTonalCenterInfo(tune, targetName)
 
 				devices = append(devices, HarmonicDevice{
 					Type:          DeviceTritoneSub,
@@ -241,7 +241,7 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 				if c2.Chord.Quality == QualityMinor7 || c2.Chord.Quality == QualityMinorTriad {
 					targetName += " min"
 				}
-				tcInfo := GetTonalCenterInfo(targetName)
+				tcInfo := GetTuneTonalCenterInfo(tune, targetName)
 
 				devices = append(devices, HarmonicDevice{
 					Type:          DeviceTritoneSub,
@@ -284,7 +284,7 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 
 				label := romanNumeralSecondaryDominant(c2.Chord.Root.Name(), c2.Chord.Quality, homeKeyName)
 
-				tcInfo := GetTonalCenterInfo(targetName)
+				tcInfo := GetTuneTonalCenterInfo(tune, targetName)
 
 				devices = append(devices, HarmonicDevice{
 					Type:          DeviceSecondaryDominant,
@@ -321,7 +321,7 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 				if targetKey == "" {
 					targetKey = homeKeyName
 				}
-				tcInfo := GetTonalCenterInfo(targetKey)
+				tcInfo := GetTuneTonalCenterInfo(tune, targetKey)
 
 				devices = append(devices, HarmonicDevice{
 					Type:          DeviceChromaticNeighbor,
@@ -348,7 +348,7 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 				if targetKey == "" {
 					targetKey = homeKeyName
 				}
-				tcInfo := GetTonalCenterInfo(targetKey)
+				tcInfo := GetTuneTonalCenterInfo(tune, targetKey)
 
 				devices = append(devices, HarmonicDevice{
 					Type:          DeviceChromaticNeighbor,
@@ -386,7 +386,7 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 				}
 
 				if label != "" {
-					tcInfo := GetTonalCenterInfo(homeKeyName)
+					tcInfo := GetTuneTonalCenterInfo(tune, homeKeyName)
 					devices = append(devices, HarmonicDevice{
 						Type:          DeviceModalInterchange,
 						Label:         label,
@@ -415,7 +415,7 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 				}
 
 				if label != "" {
-					tcInfo := GetTonalCenterInfo(homeKeyName)
+					tcInfo := GetTuneTonalCenterInfo(tune, homeKeyName)
 					devices = append(devices, HarmonicDevice{
 						Type:          DeviceModalInterchange,
 						Label:         label,
@@ -451,7 +451,7 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 					label = "IΔ (Picardy third)"
 				}
 				if label != "" {
-					tcInfo := GetTonalCenterInfo(homeKeyName)
+					tcInfo := GetTuneTonalCenterInfo(tune, homeKeyName)
 					devices = append(devices, HarmonicDevice{
 						Type:          DeviceModalInterchange,
 						Label:         label,
@@ -469,7 +469,7 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 				}
 			} else if c1.Chord.Quality == QualityMinor7 || c1.Chord.Quality == QualityMinorTriad {
 				if dHome == 5 {
-					tcInfo := GetTonalCenterInfo(homeKeyName)
+					tcInfo := GetTuneTonalCenterInfo(tune, homeKeyName)
 					devices = append(devices, HarmonicDevice{
 						Type:          DeviceModalInterchange,
 						Label:         "iv-7 (subdominant minor)",
@@ -501,7 +501,7 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 				if targetKey == "" {
 					targetKey = homeKeyName
 				}
-				tcInfo := GetTonalCenterInfo(targetKey)
+				tcInfo := GetTuneTonalCenterInfo(tune, targetKey)
 
 				label := "bVII7 (backdoor)"
 				startMeas := c1.MeasureIndex
@@ -536,7 +536,7 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 				if targetKey == "" {
 					targetKey = homeKeyName
 				}
-				tcInfo := GetTonalCenterInfo(targetKey)
+				tcInfo := GetTuneTonalCenterInfo(tune, targetKey)
 
 				devices = append(devices, HarmonicDevice{
 					Type:          DeviceTritoneSub,

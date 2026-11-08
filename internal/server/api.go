@@ -219,7 +219,11 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 				p = pairs[pairIdx]
 				pairIdx++
 			}
-			tcInfo := jazz.GetTonalCenterInfo(tc.TonalCenter)
+			colorHex := tc.TonalCenterHex
+			if colorHex == "" {
+				tcInfo := jazz.GetTuneTonalCenterInfo(tune, tc.TonalCenter)
+				colorHex = tcInfo.ColorHex
+			}
 			mDTO.Chords = append(mDTO.Chords, ChordDTO{
 				Symbol:        tc.Chord.String(),
 				BeatOffset:    tc.BeatOffset,
@@ -227,7 +231,7 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 				Voice1:        p.Voice1.String(),
 				Voice2:        p.Voice2.String(),
 				TonalCenter:   tc.TonalCenter,
-				ColorHex:      tcInfo.ColorHex,
+				ColorHex:      colorHex,
 			})
 		}
 		for _, mn := range m.Melody {

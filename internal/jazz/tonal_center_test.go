@@ -242,5 +242,3 @@ func TestTonalCenterDetectionTheNightHasAThousandEyes(t *testing.T) {
 		t.Errorf("expected span 2 to be G (bars 12-18), got %+v", spans[2])
 	}
 }
-
-

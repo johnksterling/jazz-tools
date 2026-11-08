@@ -47,4 +47,3 @@ func TestLoadTuneByStandardTitle(t *testing.T) {
 		t.Errorf("expected Autumn Leaves loaded standard to have melody notes")
 	}
 }
-

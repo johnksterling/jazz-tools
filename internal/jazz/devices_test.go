@@ -195,5 +195,3 @@ func TestDetectHarmonicDevices_NightInTunisia(t *testing.T) {
 		t.Errorf("expected tritone sub device in A Night in Tunisia (Eb7 -> Dm or F7 -> Em)")
 	}
 }
-
-

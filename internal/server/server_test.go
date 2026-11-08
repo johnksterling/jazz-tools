@@ -1,7 +1,9 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -196,5 +198,46 @@ func TestCompanionSVGEndpoint(t *testing.T) {
 	}
 	if !strings.Contains(resp.Pages[0], "<svg") {
 		t.Errorf("expected valid SVG tag in page 0, got: %s", resp.Pages[0][:min(100, len(resp.Pages[0]))])
+	}
+}
+
+func TestTranscribeEndpoint(t *testing.T) {
+	s := newTestServer(t)
+
+	var b bytes.Buffer
+	w := multipart.NewWriter(&b)
+
+	fw, err := w.CreateFormFile("file", "chart.png")
+	if err != nil {
+		t.Fatalf("failed to create form file: %v", err)
+	}
+	_, _ = fw.Write([]byte("fake image data"))
+
+	_ = w.WriteField("apiKey", "mock")
+	_ = w.Close()
+
+	req := httptest.NewRequest("POST", "/api/transcribe", &b)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	rec := httptest.NewRecorder()
+
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp AnalyzeResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal transcribe response: %v", err)
+	}
+
+	if resp.Title == "" {
+		t.Errorf("expected title in transcribe response")
+	}
+	if len(resp.Measures) == 0 {
+		t.Errorf("expected measures in transcribe response")
+	}
+	if resp.Data == "" {
+		t.Errorf("expected companion MusicXML data in transcribe response")
 	}
 }

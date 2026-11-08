@@ -53,6 +53,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/samples", s.handleSamples)
 	s.mux.HandleFunc("GET /api/standards", s.handleStandards)
 	s.mux.HandleFunc("POST /api/analyze", s.handleAnalyze)
+	s.mux.HandleFunc("POST /api/transcribe", s.handleTranscribe)
 	s.mux.HandleFunc("POST /api/companion/xml", s.handleCompanionXML)
 	s.mux.HandleFunc("POST /api/companion/pdf", s.handleCompanionPDF)
 	s.mux.HandleFunc("POST /api/companion/svg", s.handleCompanionSVG)

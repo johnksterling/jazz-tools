@@ -74,4 +74,5 @@ export interface AnalyzeResponse {
   devices: HarmonicDevice[];
   hasMelody?: boolean;
   melodyNotesCount?: number;
+  data?: string;
 }

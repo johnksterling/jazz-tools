@@ -560,9 +560,9 @@ export const App: React.FC = () => {
                             className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-1 focus:ring-blue-500 focus:outline-none bg-white font-mono"
                           />
                         </div>
-                        {apiKey && !apiKey.startsWith('AIza') && (
+                        {apiKey && !apiKey.startsWith('AIza') && !apiKey.startsWith('ya29.') && (
                           <p className="text-[11px] text-amber-700 mt-1.5 font-medium leading-tight">
-                            ⚠️ Notice: Google AI Studio keys typically begin with <span className="font-mono font-bold">AIzaSy...</span>. Please check your key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline font-bold text-amber-900">Google AI Studio</a>.
+                            ⚠️ Notice: Provide a Google AI Studio key (<span className="font-mono font-bold">AIzaSy...</span>) or OAuth token (<span className="font-mono font-bold">ya29...</span>), or leave blank if ADC is configured via <span className="font-mono">gcloud auth application-default login</span>.
                           </p>
                         )}
                       </div>

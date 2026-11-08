@@ -1,0 +1,12 @@
+.git
+.github
+node_modules
+web/node_modules
+web/dist
+*.pdf
+*.ly
+*.png
+!assets/*.png
+jazz-tools
+pat.txt
+testdata

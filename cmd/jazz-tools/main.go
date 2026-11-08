@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"jazz-tools/internal/jazz"
@@ -256,7 +257,13 @@ func main() {
 
 	case "serve":
 		serveCmd := flag.NewFlagSet("serve", flag.ExitOnError)
-		portFlag := serveCmd.Int("port", 8080, "Port to listen on (default: 8080)")
+		defaultPort := 8080
+		if envPort := os.Getenv("PORT"); envPort != "" {
+			if p, err := strconv.Atoi(envPort); err == nil && p > 0 {
+				defaultPort = p
+			}
+		}
+		portFlag := serveCmd.Int("port", defaultPort, "Port to listen on (default: 8080, or $PORT)")
 		hostFlag := serveCmd.String("host", "0.0.0.0", "Host to bind to (default: 0.0.0.0)")
 		serveCmd.Parse(os.Args[2:])
 

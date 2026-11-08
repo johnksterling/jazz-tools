@@ -152,7 +152,10 @@ func (s *Server) loadSampleTune(id string) (*jazz.Tune, error) {
 				return jazz.ParseTuneData(sample.Data)
 			}
 			if sample.ID == "jordu" {
-				return jazz.LoadTune("testdata/Jordu.musicxml")
+				if t, err := jazz.LoadTune("testdata/Jordu.musicxml"); err == nil {
+					return t, nil
+				}
+				return jazz.LoadTune("musicxml://standards_xml/Jordu.musicxml")
 			}
 		}
 	}

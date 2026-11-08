@@ -100,3 +100,24 @@ func TestTranscribeChartMissingKey(t *testing.T) {
 		t.Fatalf("expected error when GEMINI_API_KEY is not configured")
 	}
 }
+
+func TestCleanAPIKey(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"AIzaSyABC123", "AIzaSyABC123"},
+		{"  AIzaSyABC123  \n", "AIzaSyABC123"},
+		{`"AIzaSyABC123"`, "AIzaSyABC123"},
+		{"export GEMINI_API_KEY=AIzaSyABC123", "AIzaSyABC123"},
+		{"GEMINI_API_KEY=\"AIzaSyABC123\"", "AIzaSyABC123"},
+	}
+
+	for _, tt := range tests {
+		got := cleanAPIKey(tt.input)
+		if got != tt.expected {
+			t.Errorf("cleanAPIKey(%q) = %q, expected %q", tt.input, got, tt.expected)
+		}
+	}
+}
+

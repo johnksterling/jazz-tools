@@ -34,7 +34,7 @@ export const App: React.FC = () => {
   const [textContent, setTextContent] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || '');
-  const [visionModel, setVisionModel] = useState<string>('gemini-2.5-flash');
+  const [visionModel, setVisionModel] = useState<string>('gemini-2.0-flash');
 
   // Results & status
   const [loading, setLoading] = useState<boolean>(false);
@@ -540,7 +540,7 @@ export const App: React.FC = () => {
                     <div className="flex flex-col sm:flex-row gap-3 pt-1">
                       <div className="flex-1">
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                          Gemini API Key (optional if configured in server $GEMINI_API_KEY)
+                          Gemini API Key (Google AI Studio)
                         </label>
                         <div className="relative">
                           <Key className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />
@@ -548,13 +548,23 @@ export const App: React.FC = () => {
                             type="password"
                             value={apiKey}
                             onChange={(e) => {
-                              setApiKey(e.target.value);
-                              localStorage.setItem('gemini_api_key', e.target.value);
+                              let val = e.target.value.trim();
+                              if (val.includes('=')) {
+                                val = val.split('=').pop()?.trim() || val;
+                              }
+                              val = val.replace(/^["'`]|["'`]$/g, '').trim();
+                              setApiKey(val);
+                              localStorage.setItem('gemini_api_key', val);
                             }}
                             placeholder="AIzaSy... (persisted in browser)"
                             className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-1 focus:ring-blue-500 focus:outline-none bg-white font-mono"
                           />
                         </div>
+                        {apiKey && !apiKey.startsWith('AIza') && (
+                          <p className="text-[11px] text-amber-700 mt-1.5 font-medium leading-tight">
+                            ⚠️ Notice: Google AI Studio keys typically begin with <span className="font-mono font-bold">AIzaSy...</span>. Please check your key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="underline font-bold text-amber-900">Google AI Studio</a>.
+                          </p>
+                        )}
                       </div>
                       <div className="w-full sm:w-48">
                         <label className="block text-[11px] font-semibold text-slate-600 mb-1">Vision Model</label>
@@ -563,8 +573,9 @@ export const App: React.FC = () => {
                           onChange={(e) => setVisionModel(e.target.value)}
                           className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-1 focus:ring-blue-500 focus:outline-none bg-white"
                         >
-                          <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast)</option>
-                          <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep)</option>
+                          <option value="gemini-2.0-flash">Gemini 2.0 Flash (Fast & Accurate)</option>
+                          <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                          <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Reasoning)</option>
                         </select>
                       </div>
                     </div>

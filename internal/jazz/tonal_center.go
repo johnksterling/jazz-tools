@@ -7,12 +7,13 @@ import (
 
 // TonalCenterInfo holds metadata and formatting tokens for a tonal center.
 type TonalCenterInfo struct {
-	Name          string // e.g. "F", "Bb", "Eb", "G min"
-	Fifths        int    // circle of fifths position (-1 for F, -2 for Bb, etc.)
-	Mode          string // "major" or "minor"
-	ColorHex      string // e.g. "#1D4ED8" for MusicXML and web
-	LilyPondColor string // e.g. "(rgb-color 0.11 0.31 0.85)"
-	AnsiColor     string // ANSI 24-bit terminal color escape code
+	Name          string `json:"name"`                // e.g. "F", "Bb", "Eb", "G min", "A dorian"
+	Fifths        int    `json:"fifths"`              // circle of fifths position (-1 for F, -2 for Bb, etc.)
+	Mode          string `json:"mode"`                // "major", "minor", or "dorian"
+	ParentKey     string `json:"parentKey,omitempty"` // parent major scale for modes (e.g. "G" for "A dorian", "Bb" for "C dorian")
+	ColorHex      string `json:"colorHex"`            // e.g. "#1D4ED8" for MusicXML and web
+	LilyPondColor string `json:"lilyPondColor"`       // e.g. "(rgb-color 0.11 0.31 0.85)"
+	AnsiColor     string `json:"ansiColor"`           // ANSI 24-bit terminal color escape code
 }
 
 // TonalCenterColor holds color formatting tokens for sheet music engraving and web display.
@@ -140,10 +141,59 @@ var TonalCenterPalette = map[string]TonalCenterInfo{
 	},
 }
 
+// dorianParentKey returns the parent major key name and fifths for a Dorian mode on root.
+// In Dorian mode, degree 1 is the 2nd degree of the parent major scale (1 whole step down).
+// E.g., A dorian -> G (1 fifth), C dorian -> Bb (-2 fifths), D dorian -> C (0 fifths).
+func dorianParentKey(root string) (string, int) {
+	switch root {
+	case "C":
+		return "Bb", -2
+	case "C#", "Db":
+		return "B", 5
+	case "D":
+		return "C", 0
+	case "D#", "Eb":
+		return "Db", -5
+	case "E":
+		return "D", 2
+	case "F":
+		return "Eb", -3
+	case "F#", "Gb":
+		return "E", 4
+	case "G":
+		return "F", -1
+	case "G#", "Ab":
+		return "Gb", -6
+	case "A":
+		return "G", 1
+	case "A#", "Bb":
+		return "Ab", -4
+	case "B":
+		return "A", 3
+	default:
+		return "C", 0
+	}
+}
+
 // GetTonalCenterInfo retrieves color and metadata for a given key name.
 func GetTonalCenterInfo(name string) TonalCenterInfo {
 	if info, ok := TonalCenterPalette[name]; ok {
 		return info
+	}
+	// Dorian mode detection (e.g. "A dorian", "C dorian")
+	if strings.HasSuffix(name, " dorian") {
+		root := strings.TrimSpace(strings.TrimSuffix(name, " dorian"))
+		parentKey, fifths := dorianParentKey(root)
+		parentInfo := GetTonalCenterInfo(parentKey)
+		return TonalCenterInfo{
+			Name:          name,
+			Fifths:        fifths,
+			Mode:          "dorian",
+			ParentKey:     parentKey,
+			ColorHex:      parentInfo.ColorHex,
+			LilyPondColor: parentInfo.LilyPondColor,
+			AnsiColor:     parentInfo.AnsiColor,
+		}
 	}
 	// Enharmonic substitutions
 	switch name {
@@ -163,8 +213,8 @@ func GetTonalCenterInfo(name string) TonalCenterInfo {
 		return GetTonalCenterInfo("Db min")
 	}
 
-	// Clean any trailing "major" / "minor"
-	trimmed := strings.TrimSuffix(strings.TrimSuffix(name, " major"), " minor")
+	// Clean any trailing "major" / "minor" / "dorian"
+	trimmed := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(name, " major"), " minor"), " dorian")
 	if info, ok := TonalCenterPalette[trimmed]; ok {
 		return info
 	}
@@ -187,7 +237,7 @@ func GetTuneTonalCenterInfo(tune *Tune, name string) TonalCenterInfo {
 		if info, ok := tune.TonalCenterColors[name]; ok {
 			return info
 		}
-		trimmed := strings.TrimSuffix(strings.TrimSuffix(name, " major"), " minor")
+		trimmed := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(name, " major"), " minor"), " dorian")
 		if info, ok := tune.TonalCenterColors[trimmed]; ok {
 			return info
 		}
@@ -233,6 +283,8 @@ func buildScalePitchSet(rootName, mode string) map[int]bool {
 	steps := []int{0, 2, 4, 5, 7, 9, 11} // major
 	if mode == "minor" {
 		steps = []int{0, 2, 3, 5, 7, 8, 10} // natural minor
+	} else if mode == "dorian" {
+		steps = []int{0, 2, 3, 5, 7, 9, 10} // dorian mode
 	}
 
 	set := make(map[int]bool)
@@ -306,12 +358,114 @@ func extractHomeKey(t *Tune) (string, string) {
 	return root, mode
 }
 
+// isDorianSpan checks whether a minor chord / section exhibits Dorian mode characteristics
+// either via chord extensions (e.g. m6, min6, m13) or melody notes sounding the major 6th
+// ((root + 9) % 12) with duration >= any minor 6th ((root + 8) % 12).
+func isDorianSpan(tune *Tune, rootName string, startBar, endBar int) bool {
+	if tune == nil || len(tune.Measures) == 0 {
+		return false
+	}
+	r := pitchNameToClass(rootName)
+	maj6PC := (r + 9) % 12
+	min6PC := (r + 8) % 12
+
+	var maj6Dur, min6Dur float64
+	hasMelodyNotes := false
+
+	if startBar < 1 {
+		startBar = 1
+	}
+	if endBar > len(tune.Measures) {
+		endBar = len(tune.Measures)
+	}
+
+	for bar := startBar; bar <= endBar; bar++ {
+		m := tune.Measures[bar-1]
+
+		// 1. Check chord symbols for explicit major 6th or 13th
+		for _, c := range m.Chords {
+			if c.Chord.Root.Name() == rootName {
+				if c.Chord.Quality == QualityMinor6 {
+					return true
+				}
+				sym := strings.ToLower(c.Chord.Symbol)
+				if strings.Contains(sym, "m6") || strings.Contains(sym, "min6") ||
+					strings.Contains(sym, "-6") || strings.Contains(sym, "m13") ||
+					strings.Contains(sym, "min13") {
+					return true
+				}
+			}
+		}
+
+		// 2. Check melody notes sounding while rootName chord is active
+		for _, note := range m.Melody {
+			if note.IsRest || note.Pitch == nil {
+				continue
+			}
+			chordMatches := true
+			if len(m.Chords) > 0 {
+				chordMatches = false
+				noteStart := note.BeatOffset
+				noteEnd := noteStart + note.DurationBeats
+				if note.DurationBeats <= 0 {
+					noteEnd = noteStart + 1.0
+				}
+				for _, c := range m.Chords {
+					if c.Chord.Root.Name() == rootName {
+						cStart := c.BeatOffset
+						cEnd := cStart + c.DurationBeats
+						if noteStart < cEnd && noteEnd > cStart {
+							chordMatches = true
+							break
+						}
+					}
+				}
+			}
+
+			if !chordMatches {
+				continue
+			}
+
+			hasMelodyNotes = true
+			dur := note.DurationBeats
+			if dur <= 0 {
+				dur = 1.0
+			}
+			pc := note.Pitch.Semitone()
+			if pc == maj6PC {
+				maj6Dur += dur
+			} else if pc == min6PC {
+				min6Dur += dur
+			}
+		}
+	}
+
+	if hasMelodyNotes && maj6Dur > 0 && maj6Dur >= min6Dur {
+		return true
+	}
+
+	return false
+}
+
 // AnalyzeTonalCenters determines the local diatonic/tonal center for each chord in the tune.
 func AnalyzeTonalCenters(tune *Tune) {
 	homeRoot, homeMode := extractHomeKey(tune)
 	homeKeyName := homeRoot
 	if homeMode == "minor" {
-		homeKeyName = homeRoot + " min"
+		if isDorianSpan(tune, homeRoot, 1, 4) {
+			homeKeyName = homeRoot + " dorian"
+			homeMode = "dorian"
+		} else {
+			homeKeyName = homeRoot + " min"
+		}
+	} else if len(tune.Measures) > 0 && len(tune.Measures[0].Chords) > 0 {
+		c0 := tune.Measures[0].Chords[0].Chord
+		if c0.Root.Name() == homeRoot && (c0.Quality == QualityMinor7 || c0.Quality == QualityMinorTriad || c0.Quality == QualityMinor6) {
+			if isDorianSpan(tune, homeRoot, 1, 4) {
+				homeKeyName = homeRoot + " dorian"
+				homeMode = "dorian"
+			}
+		}
 	}
 
 	// Cache major scale pitch sets
@@ -321,10 +475,11 @@ func AnalyzeTonalCenters(tune *Tune) {
 		scaleSets[k] = buildScalePitchSet(k, "major")
 	}
 
-	// Cache common minor centers
-	minorKeys := []string{"G", "D", "C", "F", "Bb", "A", "E", "B"}
+	// Cache common minor centers and dorian centers
+	minorKeys := []string{"G", "D", "C", "F", "Bb", "A", "E", "B", "Eb", "Ab", "Db", "Gb"}
 	for _, k := range minorKeys {
 		scaleSets[k+" min"] = buildScalePitchSet(k, "minor")
+		scaleSets[k+" dorian"] = buildScalePitchSet(k, "dorian")
 	}
 
 	// Collect sequential pointers to all TimedChords
@@ -455,7 +610,7 @@ func AnalyzeTonalCenters(tune *Tune) {
 
 		// Check C: Modal Interchange / Diatonic Chords in Home Minor Key (e.g. bIIΔ Phrygian, bVIΔ, iv-7, IΔ)
 		// Applies when home key is minor (e.g. Nardis in E minor)
-		if !isNeighborOrModalInterchange && activeCenter == homeKeyName && homeMode == "minor" {
+		if !isNeighborOrModalInterchange && activeCenter == homeKeyName && (homeMode == "minor" || homeMode == "dorian") {
 			dHome := semitoneDistance(homeRoot, tc.Chord.Root.Name())
 			if tc.Chord.Quality == QualityMajor7 {
 				// bIIΔ (Phrygian, d=1), bVIΔ (Aeolian submediant, d=8), IΔ (Picardy major, d=0)
@@ -491,12 +646,12 @@ func AnalyzeTonalCenters(tune *Tune) {
 			}
 		}
 
-		// Check E: Minor Tonic chords with major 6th / major 7th (e.g. Dm6 in D minor, Em6 in E minor)
+		// Check E: Minor Tonic chords with major 6th / major 7th (e.g. Dm6 in D minor, Em6 in E minor, Am6 in A dorian)
 		if !isNeighborOrModalInterchange && (tc.Chord.Quality == QualityMinor6 || tc.Chord.Quality == QualityMinorMajor7) {
-			if tc.Chord.Root.Name() == homeRoot && homeMode == "minor" {
+			if tc.Chord.Root.Name() == homeRoot && (homeMode == "minor" || homeMode == "dorian") {
 				isNeighborOrModalInterchange = true
 				newCenter = homeKeyName
-			} else if tc.Chord.Root.Name() == strings.Fields(activeCenter)[0] && strings.HasSuffix(activeCenter, "min") {
+			} else if tc.Chord.Root.Name() == strings.Fields(activeCenter)[0] && (strings.HasSuffix(activeCenter, "min") || strings.HasSuffix(activeCenter, "dorian")) {
 				isNeighborOrModalInterchange = true
 				newCenter = activeCenter
 			}
@@ -515,8 +670,21 @@ func AnalyzeTonalCenters(tune *Tune) {
 		}
 
 		// 5. Explicit Minor 7th modulation (only if not neighbor or modal interchange)
-		if newCenter == activeCenter && !isNeighborOrModalInterchange && (tc.Chord.Quality == QualityMinor7 || tc.Chord.Quality == QualityMinorTriad) && !fitsActive && !fitsHome {
-			minKey := tc.Chord.Root.Name() + " min"
+		if newCenter == activeCenter && !isNeighborOrModalInterchange && (tc.Chord.Quality == QualityMinor7 || tc.Chord.Quality == QualityMinorTriad || tc.Chord.Quality == QualityMinor6) && !fitsActive && !fitsHome {
+			rootName := tc.Chord.Root.Name()
+			startBar := tc.MeasureNumber
+			endBar := startBar
+			for j := i; j < len(timedChords); j++ {
+				if timedChords[j].Chord.Root.Name() == rootName {
+					endBar = timedChords[j].MeasureNumber
+				} else {
+					break
+				}
+			}
+			minKey := rootName + " min"
+			if isDorianSpan(tune, rootName, startBar, endBar) {
+				minKey = rootName + " dorian"
+			}
 			if minScale := scaleSets[minKey]; minScale != nil && chordFitsScale(tc.Chord, minScale) {
 				newCenter = minKey
 			}
@@ -549,7 +717,7 @@ func AnalyzeTonalCenters(tune *Tune) {
 		}
 
 		// Pull back to home key on dominant resolution to home tonic
-		if tc.Chord.Quality == QualityDominant7 && fitsHome {
+		if tc.Chord.Quality == QualityDominant7 && (fitsHome || tc.Chord.Root.AddInterval(3, 5).Name() == homeRoot) {
 			targetPitch := tc.Chord.Root.AddInterval(3, 5)
 			if targetPitch.Name() == homeRoot {
 				newCenter = homeKeyName
@@ -608,10 +776,12 @@ func AnalyzeTonalCenters(tune *Tune) {
 
 // JourneySpan describes a continuous tonal center span across measures.
 type JourneySpan struct {
-	Center   string `json:"center"`
-	StartBar int    `json:"startBar"`
-	EndBar   int    `json:"endBar"`
-	ColorHex string `json:"colorHex"`
+	Center    string `json:"center"`
+	ParentKey string `json:"parentKey,omitempty"`
+	Mode      string `json:"mode,omitempty"`
+	StartBar  int    `json:"startBar"`
+	EndBar    int    `json:"endBar"`
+	ColorHex  string `json:"colorHex"`
 }
 
 // GetHarmonicJourneySpans extracts all tonal center spans across measures.
@@ -624,16 +794,18 @@ func GetHarmonicJourneySpans(tune *Tune) []JourneySpan {
 				continue
 			}
 			if len(spans) == 0 || spans[len(spans)-1].Center != tc.TonalCenter {
+				info := GetTuneTonalCenterInfo(tune, tc.TonalCenter)
 				colorHex := tc.TonalCenterHex
 				if colorHex == "" {
-					info := GetTuneTonalCenterInfo(tune, tc.TonalCenter)
 					colorHex = info.ColorHex
 				}
 				spans = append(spans, JourneySpan{
-					Center:   tc.TonalCenter,
-					StartBar: tc.MeasureNumber,
-					EndBar:   tc.MeasureNumber,
-					ColorHex: colorHex,
+					Center:    tc.TonalCenter,
+					ParentKey: info.ParentKey,
+					Mode:      info.Mode,
+					StartBar:  tc.MeasureNumber,
+					EndBar:    tc.MeasureNumber,
+					ColorHex:  colorHex,
 				})
 			} else {
 				spans[len(spans)-1].EndBar = tc.MeasureNumber
@@ -657,7 +829,11 @@ func HarmonicJourney(tune *Tune) string {
 		if sp.StartBar == sp.EndBar {
 			barLabel = fmt.Sprintf("bar %d", sp.StartBar)
 		}
-		coloredName := fmt.Sprintf("%s[ %s ]\033[0m (%s)", info.AnsiColor, sp.Center, barLabel)
+		centerLabel := sp.Center
+		if sp.ParentKey != "" {
+			centerLabel = fmt.Sprintf("%s (%s notes)", sp.Center, sp.ParentKey)
+		}
+		coloredName := fmt.Sprintf("%s[ %s ]\033[0m (%s)", info.AnsiColor, centerLabel, barLabel)
 		parts = append(parts, coloredName)
 	}
 

@@ -18,6 +18,8 @@ export interface StandardTune {
 
 export interface JourneySpan {
   center: string;
+  parentKey?: string;
+  mode?: string;
   startBar: number;
   endBar: number;
   colorHex: string;

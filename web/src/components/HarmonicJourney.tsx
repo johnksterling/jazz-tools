@@ -17,6 +17,11 @@ export const HarmonicJourney: React.FC<{ spans: JourneySpan[] }> = ({ spans }) =
               style={{ backgroundColor: s.colorHex || '#1e293b' }}
             >
               <span className="text-sm font-bold tracking-tight">{s.center}</span>
+              {s.parentKey && (
+                <span className="text-[10px] font-medium opacity-90 bg-white/20 px-1.5 py-0.5 rounded">
+                  {s.parentKey} notes
+                </span>
+              )}
               <span className="opacity-80 text-[10px] font-normal">
                 ({s.startBar === s.endBar ? `bar ${s.startBar}` : `bars ${s.startBar}–${s.endBar}`})
               </span>

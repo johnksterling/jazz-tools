@@ -110,6 +110,9 @@ func TestDetectHarmonicDevices_Beatrice(t *testing.T) {
 	for _, d := range devices {
 		if d.StartMeasure == 1 && d.Label == "bIIΔ (Phrygian neighbor)" {
 			foundGbNeighbor = true
+			if d.LilyPondColor != "(rgb-color 0.11 0.31 0.85)" {
+				t.Errorf("expected Gb neighbor to have Royal Blue LilyPondColor, got %s", d.LilyPondColor)
+			}
 		}
 		if d.StartMeasure == 3 && d.Label == "bVIIΔ (modal interchange)" {
 			foundEbModalInterchange = true

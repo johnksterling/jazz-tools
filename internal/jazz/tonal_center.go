@@ -15,7 +15,25 @@ type TonalCenterInfo struct {
 	AnsiColor     string // ANSI 24-bit terminal color escape code
 }
 
-// TonalCenterPalette maps keys to visually distinct, harmonious colors.
+// TonalCenterColor holds color formatting tokens for sheet music engraving and web display.
+type TonalCenterColor struct {
+	ColorHex      string // e.g. "#1D4ED8"
+	LilyPondColor string // e.g. "(rgb-color 0.11 0.31 0.85)"
+	AnsiColor     string // ANSI 24-bit terminal color escape code
+}
+
+// CuratedTonalCenterColors provides a small, high-contrast, visually distinct set of colors
+// designed for clear legibility and variety on printed sheet music and vector scores.
+var CuratedTonalCenterColors = []TonalCenterColor{
+	{ColorHex: "#1D4ED8", LilyPondColor: "(rgb-color 0.11 0.31 0.85)", AnsiColor: "\033[38;2;29;78;216m"},  // Royal Blue (primary)
+	{ColorHex: "#D97706", LilyPondColor: "(rgb-color 0.85 0.47 0.02)", AnsiColor: "\033[38;2;217;119;6m"},  // Warm Amber / Gold
+	{ColorHex: "#15803D", LilyPondColor: "(rgb-color 0.08 0.50 0.24)", AnsiColor: "\033[38;2;21;128;61m"},  // Forest Green
+	{ColorHex: "#7E22CE", LilyPondColor: "(rgb-color 0.49 0.13 0.81)", AnsiColor: "\033[38;2;126;34;206m"}, // Rich Purple
+	{ColorHex: "#DC2626", LilyPondColor: "(rgb-color 0.86 0.15 0.15)", AnsiColor: "\033[38;2;220;38;38m"},  // Crimson Red
+	{ColorHex: "#0D9488", LilyPondColor: "(rgb-color 0.05 0.58 0.53)", AnsiColor: "\033[38;2;13;148;136m"}, // Deep Teal
+}
+
+// TonalCenterPalette maps keys to visually distinct, high-contrast colors from CuratedTonalCenterColors.
 var TonalCenterPalette = map[string]TonalCenterInfo{
 	// Flat Keys
 	"F": {
@@ -35,13 +53,13 @@ var TonalCenterPalette = map[string]TonalCenterInfo{
 	},
 	"Ab": {
 		Name: "Ab", Fifths: -4, Mode: "major",
-		ColorHex: "#BE185D", LilyPondColor: "(rgb-color 0.75 0.09 0.36)",
-		AnsiColor: "\033[38;2;190;24;93m",
+		ColorHex: "#15803D", LilyPondColor: "(rgb-color 0.08 0.50 0.24)",
+		AnsiColor: "\033[38;2;21;128;61m",
 	},
 	"Db": {
 		Name: "Db", Fifths: -5, Mode: "major",
-		ColorHex: "#EA580C", LilyPondColor: "(rgb-color 0.92 0.35 0.05)",
-		AnsiColor: "\033[38;2;234;88;12m",
+		ColorHex: "#DC2626", LilyPondColor: "(rgb-color 0.86 0.15 0.15)",
+		AnsiColor: "\033[38;2;220;38;38m",
 	},
 	"Gb": {
 		Name: "Gb", Fifths: -6, Mode: "major",
@@ -51,74 +69,74 @@ var TonalCenterPalette = map[string]TonalCenterInfo{
 	// Sharp / Natural Keys
 	"C": {
 		Name: "C", Fifths: 0, Mode: "major",
-		ColorHex: "#2563EB", LilyPondColor: "(rgb-color 0.15 0.39 0.92)",
-		AnsiColor: "\033[38;2;37;99;235m",
+		ColorHex: "#1D4ED8", LilyPondColor: "(rgb-color 0.11 0.31 0.85)",
+		AnsiColor: "\033[38;2;29;78;216m",
 	},
 	"G": {
 		Name: "G", Fifths: 1, Mode: "major",
-		ColorHex: "#16A34A", LilyPondColor: "(rgb-color 0.09 0.64 0.29)",
-		AnsiColor: "\033[38;2;22;163;74m",
+		ColorHex: "#D97706", LilyPondColor: "(rgb-color 0.85 0.47 0.02)",
+		AnsiColor: "\033[38;2;217;119;6m",
 	},
 	"D": {
 		Name: "D", Fifths: 2, Mode: "major",
-		ColorHex: "#4F46E5", LilyPondColor: "(rgb-color 0.31 0.27 0.90)",
-		AnsiColor: "\033[38;2;79;70;229m",
-	},
-	"A": {
-		Name: "A", Fifths: 3, Mode: "major",
-		ColorHex: "#C026D3", LilyPondColor: "(rgb-color 0.75 0.15 0.83)",
-		AnsiColor: "\033[38;2;192;38;211m",
-	},
-	"E": {
-		Name: "E", Fifths: 4, Mode: "major",
-		ColorHex: "#65A30D", LilyPondColor: "(rgb-color 0.40 0.64 0.05)",
-		AnsiColor: "\033[38;2;101;163;13m",
-	},
-	"B": {
-		Name: "B", Fifths: 5, Mode: "major",
-		ColorHex: "#059669", LilyPondColor: "(rgb-color 0.02 0.59 0.41)",
-		AnsiColor: "\033[38;2;5;150;105m",
-	},
-	// Common Minor Tonal Centers
-	"G min": {
-		Name: "G min", Fifths: -2, Mode: "minor",
 		ColorHex: "#15803D", LilyPondColor: "(rgb-color 0.08 0.50 0.24)",
 		AnsiColor: "\033[38;2;21;128;61m",
 	},
+	"A": {
+		Name: "A", Fifths: 3, Mode: "major",
+		ColorHex: "#7E22CE", LilyPondColor: "(rgb-color 0.49 0.13 0.81)",
+		AnsiColor: "\033[38;2;126;34;206m",
+	},
+	"E": {
+		Name: "E", Fifths: 4, Mode: "major",
+		ColorHex: "#DC2626", LilyPondColor: "(rgb-color 0.86 0.15 0.15)",
+		AnsiColor: "\033[38;2;220;38;38m",
+	},
+	"B": {
+		Name: "B", Fifths: 5, Mode: "major",
+		ColorHex: "#0D9488", LilyPondColor: "(rgb-color 0.05 0.58 0.53)",
+		AnsiColor: "\033[38;2;13;148;136m",
+	},
+	// Common Minor Tonal Centers (paired to contrast with their relative major)
 	"D min": {
 		Name: "D min", Fifths: -1, Mode: "minor",
-		ColorHex: "#4338CA", LilyPondColor: "(rgb-color 0.26 0.22 0.79)",
-		AnsiColor: "\033[38;2;67;56;202m",
+		ColorHex: "#D97706", LilyPondColor: "(rgb-color 0.85 0.47 0.02)",
+		AnsiColor: "\033[38;2;217;119;6m",
+	},
+	"G min": {
+		Name: "G min", Fifths: -2, Mode: "minor",
+		ColorHex: "#7E22CE", LilyPondColor: "(rgb-color 0.49 0.13 0.81)",
+		AnsiColor: "\033[38;2;126;34;206m",
 	},
 	"C min": {
 		Name: "C min", Fifths: -3, Mode: "minor",
-		ColorHex: "#6B21A8", LilyPondColor: "(rgb-color 0.42 0.13 0.66)",
-		AnsiColor: "\033[38;2;107;33;168m",
+		ColorHex: "#15803D", LilyPondColor: "(rgb-color 0.08 0.50 0.24)",
+		AnsiColor: "\033[38;2;21;128;61m",
 	},
 	"F min": {
 		Name: "F min", Fifths: -4, Mode: "minor",
-		ColorHex: "#9F1239", LilyPondColor: "(rgb-color 0.62 0.07 0.22)",
-		AnsiColor: "\033[38;2;159;18;57m",
+		ColorHex: "#DC2626", LilyPondColor: "(rgb-color 0.86 0.15 0.15)",
+		AnsiColor: "\033[38;2;220;38;38m",
 	},
 	"Bb min": {
 		Name: "Bb min", Fifths: -5, Mode: "minor",
-		ColorHex: "#9A3412", LilyPondColor: "(rgb-color 0.60 0.20 0.07)",
-		AnsiColor: "\033[38;2;154;52;18m",
+		ColorHex: "#0D9488", LilyPondColor: "(rgb-color 0.05 0.58 0.53)",
+		AnsiColor: "\033[38;2;13;148;136m",
 	},
 	"A min": {
 		Name: "A min", Fifths: 0, Mode: "minor",
-		ColorHex: "#1E3A8A", LilyPondColor: "(rgb-color 0.12 0.23 0.54)",
-		AnsiColor: "\033[38;2;30;58;138m",
+		ColorHex: "#15803D", LilyPondColor: "(rgb-color 0.08 0.50 0.24)",
+		AnsiColor: "\033[38;2;21;128;61m",
 	},
 	"E min": {
 		Name: "E min", Fifths: 1, Mode: "minor",
-		ColorHex: "#047857", LilyPondColor: "(rgb-color 0.02 0.47 0.34)",
-		AnsiColor: "\033[38;2;4;120;87m",
+		ColorHex: "#DC2626", LilyPondColor: "(rgb-color 0.86 0.15 0.15)",
+		AnsiColor: "\033[38;2;220;38;38m",
 	},
 	"B min": {
 		Name: "B min", Fifths: 2, Mode: "minor",
-		ColorHex: "#374151", LilyPondColor: "(rgb-color 0.22 0.25 0.32)",
-		AnsiColor: "\033[38;2;55;65;81m",
+		ColorHex: "#0D9488", LilyPondColor: "(rgb-color 0.05 0.58 0.53)",
+		AnsiColor: "\033[38;2;13;148;136m",
 	},
 }
 
@@ -160,6 +178,21 @@ func GetTonalCenterInfo(name string) TonalCenterInfo {
 		LilyPondColor: "(rgb-color 0.12 0.16 0.23)",
 		AnsiColor:     "\033[38;2;30;41;59m",
 	}
+}
+
+// GetTuneTonalCenterInfo retrieves color and metadata for a given key name,
+// preferring the tune's dynamic high-variety palette if available.
+func GetTuneTonalCenterInfo(tune *Tune, name string) TonalCenterInfo {
+	if tune != nil && tune.TonalCenterColors != nil {
+		if info, ok := tune.TonalCenterColors[name]; ok {
+			return info
+		}
+		trimmed := strings.TrimSuffix(strings.TrimSuffix(name, " major"), " minor")
+		if info, ok := tune.TonalCenterColors[trimmed]; ok {
+			return info
+		}
+	}
+	return GetTonalCenterInfo(name)
 }
 
 // pitchNameToClass maps pitch names to standard pitch classes 0-11 for comparisons.
@@ -523,8 +556,44 @@ func AnalyzeTonalCenters(tune *Tune) {
 			}
 		}
 
-		// Assign metadata to TimedChord
-		info := GetTonalCenterInfo(newCenter)
+		// Assign key center name
+		tc.TonalCenter = newCenter
+		activeCenter = newCenter
+	}
+
+	// Dynamic high-variety color assignment for this tune:
+	// Select distinct, widely-spaced colors from CuratedTonalCenterColors for each unique
+	// tonal center present in the tune (home key first, then modulations in order of appearance).
+	var uniqueCenters []string
+	seenCenters := make(map[string]bool)
+
+	if homeKeyName != "" {
+		uniqueCenters = append(uniqueCenters, homeKeyName)
+		seenCenters[homeKeyName] = true
+	}
+
+	for _, tc := range timedChords {
+		if tc.TonalCenter != "" && !seenCenters[tc.TonalCenter] {
+			uniqueCenters = append(uniqueCenters, tc.TonalCenter)
+			seenCenters[tc.TonalCenter] = true
+		}
+	}
+
+	tune.TonalCenterColors = make(map[string]TonalCenterInfo)
+	for idx, center := range uniqueCenters {
+		baseInfo := GetTonalCenterInfo(center)
+		paletteColor := CuratedTonalCenterColors[idx%len(CuratedTonalCenterColors)]
+		baseInfo.ColorHex = paletteColor.ColorHex
+		baseInfo.LilyPondColor = paletteColor.LilyPondColor
+		baseInfo.AnsiColor = paletteColor.AnsiColor
+		tune.TonalCenterColors[center] = baseInfo
+	}
+
+	for i, tc := range timedChords {
+		info, ok := tune.TonalCenterColors[tc.TonalCenter]
+		if !ok {
+			info = GetTonalCenterInfo(tc.TonalCenter)
+		}
 		tc.TonalCenter = info.Name
 		tc.TonalCenterColor = info.LilyPondColor
 		tc.TonalCenterHex = info.ColorHex
@@ -534,8 +603,6 @@ func AnalyzeTonalCenters(tune *Tune) {
 		} else {
 			tc.IsTonalCenterChange = false
 		}
-
-		activeCenter = newCenter
 	}
 }
 
@@ -557,12 +624,16 @@ func GetHarmonicJourneySpans(tune *Tune) []JourneySpan {
 				continue
 			}
 			if len(spans) == 0 || spans[len(spans)-1].Center != tc.TonalCenter {
-				info := GetTonalCenterInfo(tc.TonalCenter)
+				colorHex := tc.TonalCenterHex
+				if colorHex == "" {
+					info := GetTuneTonalCenterInfo(tune, tc.TonalCenter)
+					colorHex = info.ColorHex
+				}
 				spans = append(spans, JourneySpan{
 					Center:   tc.TonalCenter,
 					StartBar: tc.MeasureNumber,
 					EndBar:   tc.MeasureNumber,
-					ColorHex: info.ColorHex,
+					ColorHex: colorHex,
 				})
 			} else {
 				spans[len(spans)-1].EndBar = tc.MeasureNumber
@@ -581,7 +652,7 @@ func HarmonicJourney(tune *Tune) string {
 
 	var parts []string
 	for _, sp := range spans {
-		info := GetTonalCenterInfo(sp.Center)
+		info := GetTuneTonalCenterInfo(tune, sp.Center)
 		barLabel := fmt.Sprintf("bars %d-%d", sp.StartBar, sp.EndBar)
 		if sp.StartBar == sp.EndBar {
 			barLabel = fmt.Sprintf("bar %d", sp.StartBar)

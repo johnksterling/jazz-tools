@@ -53,12 +53,13 @@ type TimedMeasure struct {
 
 // Tune represents a complete piece of music with metadata and measures.
 type Tune struct {
-	Title         string
-	Composer      string
-	Style         string
-	Key           string
-	TimeSignature [2]int
-	Measures      []TimedMeasure
+	Title             string
+	Composer          string
+	Style             string
+	Key               string
+	TimeSignature     [2]int
+	Measures          []TimedMeasure
+	TonalCenterColors map[string]TonalCenterInfo
 }
 
 // AllChords extracts a flat slice of all chords in sequential order across all measures.

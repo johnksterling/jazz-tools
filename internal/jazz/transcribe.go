@@ -90,12 +90,31 @@ func TranscribeChart(fileBytes []byte, mimeType string, opts TranscribeOptions) 
 		return mockTranscribeTune(), nil
 	}
 
-	apiKey := cleanAPIKey(opts.APIKey)
-	if apiKey == "" {
-		apiKey = cleanAPIKey(os.Getenv("GEMINI_API_KEY"))
+	rawAuth := cleanAPIKey(opts.APIKey)
+	if rawAuth == "" {
+		rawAuth = cleanAPIKey(os.Getenv("GEMINI_API_KEY"))
 	}
-	if apiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY is not configured. Please provide your Gemini API key in the request or set the GEMINI_API_KEY environment variable")
+
+	var isBearer bool
+	var authKey string
+
+	if strings.HasPrefix(rawAuth, "ya29.") {
+		// User explicitly provided an OAuth2 / ADC access token
+		isBearer = true
+		authKey = rawAuth
+	} else if rawAuth != "" {
+		// User provided an API key (e.g. AIzaSy...)
+		isBearer = false
+		authKey = rawAuth
+	} else {
+		// Attempt Application Default Credentials (ADC) resolution
+		adcToken, err := ResolveADCAccessToken()
+		if err == nil && adcToken != "" {
+			isBearer = true
+			authKey = adcToken
+		} else {
+			return nil, fmt.Errorf("no Gemini API key or Google Application Default Credentials found. Please provide an API key (AIzaSy...), an OAuth token (ya29...), or configure ADC via 'gcloud auth application-default login'")
+		}
 	}
 
 	model := normalizeModel(opts.Model)
@@ -166,7 +185,12 @@ Guidelines:
 		return nil, fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	apiURL := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, url.QueryEscape(apiKey))
+	var apiURL string
+	if isBearer {
+		apiURL = fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent", model)
+	} else {
+		apiURL = fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, url.QueryEscape(authKey))
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -176,7 +200,11 @@ Guidelines:
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-goog-api-key", apiKey)
+	if isBearer {
+		httpReq.Header.Set("Authorization", "Bearer "+authKey)
+	} else {
+		httpReq.Header.Set("x-goog-api-key", authKey)
+	}
 
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(httpReq)

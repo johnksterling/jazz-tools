@@ -405,4 +405,3 @@ func normalizeModel(model string) string {
 	}
 	return m
 }
-

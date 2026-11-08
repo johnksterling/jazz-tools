@@ -120,4 +120,3 @@ func TestCleanAPIKey(t *testing.T) {
 		}
 	}
 }
-

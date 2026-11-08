@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -89,18 +90,34 @@ func TranscribeChart(fileBytes []byte, mimeType string, opts TranscribeOptions) 
 		return mockTranscribeTune(), nil
 	}
 
-	apiKey := opts.APIKey
-	if apiKey == "" {
-		apiKey = os.Getenv("GEMINI_API_KEY")
-	}
-	if apiKey == "" {
-		return nil, fmt.Errorf("GEMINI_API_KEY is not configured. Please provide your Gemini API key in the request or set the GEMINI_API_KEY environment variable")
+	rawAuth := cleanAPIKey(opts.APIKey)
+	if rawAuth == "" {
+		rawAuth = cleanAPIKey(os.Getenv("GEMINI_API_KEY"))
 	}
 
-	model := opts.Model
-	if model == "" {
-		model = "gemini-2.5-flash"
+	var isBearer bool
+	var authKey string
+
+	if strings.HasPrefix(rawAuth, "ya29.") {
+		// User explicitly provided an OAuth2 / ADC access token
+		isBearer = true
+		authKey = rawAuth
+	} else if rawAuth != "" {
+		// User provided an API key (e.g. AIzaSy...)
+		isBearer = false
+		authKey = rawAuth
+	} else {
+		// Attempt Application Default Credentials (ADC) resolution
+		adcToken, err := ResolveADCAccessToken()
+		if err == nil && adcToken != "" {
+			isBearer = true
+			authKey = adcToken
+		} else {
+			return nil, fmt.Errorf("no Gemini API key or Google Application Default Credentials found. Please provide an API key (AIzaSy...), an OAuth token (ya29...), or configure ADC via 'gcloud auth application-default login'")
+		}
 	}
+
+	model := normalizeModel(opts.Model)
 
 	if mimeType == "" {
 		mimeType = http.DetectContentType(fileBytes)
@@ -168,16 +185,26 @@ Guidelines:
 		return nil, fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
+	var apiURL string
+	if isBearer {
+		apiURL = fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent", model)
+	} else {
+		apiURL = fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, url.QueryEscape(authKey))
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(reqJSON))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(reqJSON))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	if isBearer {
+		httpReq.Header.Set("Authorization", "Bearer "+authKey)
+	} else {
+		httpReq.Header.Set("x-goog-api-key", authKey)
+	}
 
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(httpReq)
@@ -192,7 +219,11 @@ Guidelines:
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Gemini API error (status %d): %s", resp.StatusCode, string(respBytes))
+		respStr := string(respBytes)
+		if strings.Contains(respStr, "API_KEY_INVALID") {
+			return nil, fmt.Errorf("invalid Gemini API Key. Google AI Studio keys typically start with 'AIzaSy'. Please verify your key at https://aistudio.google.com/app/apikey (ensure you are using a Gemini API key from AI Studio, not an OpenAI/Anthropic key or GCP service account)")
+		}
+		return nil, fmt.Errorf("Gemini API error (status %d): %s", resp.StatusCode, respStr)
 	}
 
 	var apiResp struct {
@@ -351,4 +382,26 @@ func mockTranscribeTune() *Tune {
 	AnalyzeTonalCenters(t)
 	_ = DetectHarmonicDevices(t)
 	return t
+}
+
+func cleanAPIKey(raw string) string {
+	k := strings.TrimSpace(raw)
+	// If user copied 'export GEMINI_API_KEY=...' or 'GEMINI_API_KEY=...'
+	if idx := strings.Index(k, "="); idx != -1 && strings.Contains(strings.ToUpper(k[:idx]), "KEY") {
+		k = strings.TrimSpace(k[idx+1:])
+	}
+	// Strip quotes and extra spaces
+	k = strings.Trim(k, "\"'` \t\r\n")
+	return k
+}
+
+func normalizeModel(model string) string {
+	m := strings.TrimSpace(model)
+	if m == "" || m == "gemini-2.5-flash" || m == "gemini-2.0-flash" {
+		return "gemini-2.0-flash"
+	}
+	if m == "gemini-2.5-pro" || m == "gemini-2.0-pro" || m == "gemini-1.5-pro" {
+		return "gemini-1.5-pro"
+	}
+	return m
 }

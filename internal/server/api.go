@@ -78,6 +78,7 @@ type AnalyzeResponse struct {
 	Devices          []jazz.HarmonicDevice `json:"devices"`
 	HasMelody        bool                  `json:"hasMelody"`
 	MelodyNotesCount int                   `json:"melodyNotesCount"`
+	Data             string                `json:"data,omitempty"`
 }
 
 // parseTuneFromRequest extracts and decodes a Tune from JSON or multipart form.
@@ -86,7 +87,7 @@ func (s *Server) parseTuneFromRequest(r *http.Request) (*jazz.Tune, error) {
 
 	// 1. Multipart Form Upload
 	if strings.HasPrefix(contentType, "multipart/form-data") {
-		if err := r.ParseMultipartForm(10 << 20); err != nil { // 10MB limit
+		if err := r.ParseMultipartForm(20 << 20); err != nil { // 20MB limit
 			return nil, fmt.Errorf("failed to parse multipart form: %w", err)
 		}
 
@@ -102,13 +103,44 @@ func (s *Server) parseTuneFromRequest(r *http.Request) (*jazz.Tune, error) {
 			return jazz.ParseTuneData(textContent)
 		}
 
-		file, _, err := r.FormFile("file")
+		file, header, err := r.FormFile("file")
 		if err == nil {
 			defer file.Close()
 			data, err := io.ReadAll(file)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read uploaded file: %w", err)
 			}
+
+			mime := ""
+			if header != nil {
+				mime = header.Header.Get("Content-Type")
+				if mime == "" || mime == "application/octet-stream" {
+					ext := strings.ToLower(filepath.Ext(header.Filename))
+					switch ext {
+					case ".pdf":
+						mime = "application/pdf"
+					case ".png":
+						mime = "image/png"
+					case ".jpg", ".jpeg":
+						mime = "image/jpeg"
+					case ".webp":
+						mime = "image/webp"
+					}
+				}
+			}
+			if mime == "" || mime == "application/octet-stream" {
+				mime = http.DetectContentType(data)
+			}
+
+			if strings.HasPrefix(mime, "image/") || strings.HasPrefix(mime, "application/pdf") {
+				apiKey := r.FormValue("apiKey")
+				if apiKey == "" {
+					apiKey = r.Header.Get("X-Gemini-API-Key")
+				}
+				model := r.FormValue("model")
+				return jazz.TranscribeChart(data, mime, jazz.TranscribeOptions{APIKey: apiKey, Model: model})
+			}
+
 			return jazz.ParseTuneData(string(data))
 		}
 	}
@@ -189,6 +221,24 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resp := buildAnalyzeResponse(tune)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
+	tune, err := s.parseTuneFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	resp := buildAnalyzeResponse(tune)
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func buildAnalyzeResponse(tune *jazz.Tune) AnalyzeResponse {
 	// Run voice leading
 	allChords := tune.AllChords()
 	pairs, _ := jazz.VoiceLeadChords(allChords)
@@ -246,7 +296,9 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		measuresDTO = append(measuresDTO, mDTO)
 	}
 
-	resp := AnalyzeResponse{
+	xmlStr, _ := jazz.GenerateMusicXMLGuideTones(tune)
+
+	return AnalyzeResponse{
 		Title:            tune.Title,
 		Composer:         tune.Composer,
 		Key:              tune.Key,
@@ -258,10 +310,8 @@ func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		Devices:          devices,
 		HasMelody:        tune.HasMelody(),
 		MelodyNotesCount: tune.MelodyNotesCount(),
+		Data:             xmlStr,
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (s *Server) handleCompanionXML(w http.ResponseWriter, r *http.Request) {

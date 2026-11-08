@@ -19,13 +19,15 @@ func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  jazz-tools companion <file.musicxml | irealb://... | file.html> [-o out.musicxml] [--pdf]")
 	fmt.Println("  jazz-tools analyze <file.musicxml | irealb://... | file.html>")
+	fmt.Println("  jazz-tools transcribe <chart.pdf | chart.png | chart.jpg> [-o out.musicxml] [--pdf]")
 	fmt.Println("  jazz-tools serve [--port 8080] [--host 0.0.0.0]")
-	fmt.Println("  jazz-tools <file.musicxml | irealb://...>")
+	fmt.Println("  jazz-tools <file.musicxml | irealb://... | chart.pdf | chart.png>")
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  companion    Generate a companion score (MusicXML & optional PDF) with distinct")
 	fmt.Println("               voice-led 3rds and 7ths on the staff for each chord's duration.")
 	fmt.Println("  analyze      Display tune structure, timing, chord progression, and guide tones.")
+	fmt.Println("  transcribe   Transcribe a scanned PDF or photo of a jazz lead sheet using Vision LLM.")
 	fmt.Println("  serve        Launch the web interface and REST API server.")
 	fmt.Println()
 	fmt.Println("Flags for companion:")
@@ -255,6 +257,53 @@ func main() {
 		}
 		runAnalyze(tune)
 
+	case "transcribe":
+		transcribeCmd := flag.NewFlagSet("transcribe", flag.ExitOnError)
+		outFile := transcribeCmd.String("o", "", "Output companion MusicXML file path")
+		pdfFlag := transcribeCmd.Bool("pdf", false, "Compile print-ready companion PDF via LilyPond")
+		barsFlag := transcribeCmd.Int("bars", 0, "Measures per line (default: auto)")
+		apiKeyFlag := transcribeCmd.String("api-key", "", "Gemini API key (defaults to $GEMINI_API_KEY)")
+		modelFlag := transcribeCmd.String("model", "gemini-2.5-flash", "Gemini model to use")
+
+		var target string
+		var flagArgs []string
+		for _, arg := range os.Args[2:] {
+			if !strings.HasPrefix(arg, "-") && target == "" {
+				target = arg
+			} else {
+				flagArgs = append(flagArgs, arg)
+			}
+		}
+		transcribeCmd.Parse(flagArgs)
+
+		if target == "" {
+			fmt.Println("Error: please provide a chart image or PDF file to transcribe.")
+			fmt.Println("Usage: jazz-tools transcribe <chart.pdf | chart.png | chart.jpg> [-o out.musicxml] [--pdf]")
+			os.Exit(1)
+		}
+		data, err := os.ReadFile(target)
+		if err != nil {
+			fmt.Printf("Error reading chart file %s: %v\n", target, err)
+			os.Exit(1)
+		}
+
+		fmt.Printf("Transcribing chart %s using Gemini Vision (%s)...\n", filepath.Base(target), *modelFlag)
+		tune, err := jazz.TranscribeChart(data, "", jazz.TranscribeOptions{
+			APIKey: *apiKeyFlag,
+			Model:  *modelFlag,
+		})
+		if err != nil {
+			fmt.Printf("Transcription error: %v\n", err)
+			os.Exit(1)
+		}
+
+		runAnalyze(tune)
+
+		if *outFile != "" || *pdfFlag {
+			cfg := jazz.DefaultAnnotationConfig()
+			runCompanion(tune, *outFile, *pdfFlag, *barsFlag, cfg)
+		}
+
 	case "serve":
 		serveCmd := flag.NewFlagSet("serve", flag.ExitOnError)
 		defaultPort := 8080
@@ -283,6 +332,25 @@ func main() {
 	default:
 		// Direct file argument without explicit subcommand
 		target := os.Args[1]
+		ext := strings.ToLower(filepath.Ext(target))
+		if ext == ".pdf" || ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp" {
+			data, err := os.ReadFile(target)
+			if err != nil {
+				fmt.Printf("Error reading chart file %s: %v\n", target, err)
+				os.Exit(1)
+			}
+			fmt.Printf("Detected visual chart %s. Transcribing using Gemini Vision...\n", filepath.Base(target))
+			tune, err := jazz.TranscribeChart(data, "", jazz.TranscribeOptions{})
+			if err != nil {
+				fmt.Printf("Transcription error: %v\n", err)
+				os.Exit(1)
+			}
+			runAnalyze(tune)
+			fmt.Println()
+			fmt.Printf("Tip: Run 'jazz-tools transcribe %s --pdf' to generate printable guide tone companion sheets.\n", target)
+			return
+		}
+
 		tune, err := jazz.LoadTune(target)
 		if err != nil {
 			fmt.Printf("Error loading tune %s: %v\n", target, err)

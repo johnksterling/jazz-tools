@@ -4,7 +4,7 @@ import { HarmonicJourney } from './components/HarmonicJourney';
 import { DevicesList } from './components/DevicesList';
 import { ChordsTable } from './components/ChordsTable';
 import { ScoreViewer } from './components/ScoreViewer';
-import { Music, FileText, Download, Play, Upload, RefreshCw, AlertCircle, Search } from 'lucide-react';
+import { Music, FileText, Download, Play, Upload, RefreshCw, AlertCircle, Search, Camera, Sparkles, Key } from 'lucide-react';
 
 const POPULAR_STANDARDS = [
   'Autumn Leaves',
@@ -33,6 +33,8 @@ export const App: React.FC = () => {
   const [selectedSample, setSelectedSample] = useState<string>('waltz_for_debby');
   const [textContent, setTextContent] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || '');
+  const [visionModel, setVisionModel] = useState<string>('gemini-2.5-flash');
 
   // Results & status
   const [loading, setLoading] = useState<boolean>(false);
@@ -78,6 +80,16 @@ export const App: React.FC = () => {
     return () => clearTimeout(timeout);
   }, [searchQuery]);
 
+  const isVisualFile = (file: File | null): boolean => {
+    if (!file) return false;
+    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    return (
+      ['pdf', 'png', 'jpg', 'jpeg', 'webp'].includes(ext) ||
+      file.type.startsWith('image/') ||
+      file.type === 'application/pdf'
+    );
+  };
+
   const triggerAnalyze = async (payload: { sample?: string; content?: string; file?: File; standard?: string }) => {
     setLoading(true);
     setError(null);
@@ -85,23 +97,30 @@ export const App: React.FC = () => {
 
     try {
       let analyzeRes: Response;
-      let companionRes: Response;
+      let companionRes: Response | null = null;
 
       if (payload.file) {
         const formData = new FormData();
         formData.append('file', payload.file);
+        if (apiKey) formData.append('apiKey', apiKey);
+        if (visionModel) formData.append('model', visionModel);
 
-        analyzeRes = await fetch('/api/analyze', {
+        const isVisual = isVisualFile(payload.file);
+        const endpoint = isVisual ? '/api/transcribe' : '/api/analyze';
+
+        analyzeRes = await fetch(endpoint, {
           method: 'POST',
           body: formData,
         });
 
-        const compForm = new FormData();
-        compForm.append('file', payload.file);
-        companionRes = await fetch('/api/companion/xml', {
-          method: 'POST',
-          body: compForm,
-        });
+        if (!isVisual) {
+          const compForm = new FormData();
+          compForm.append('file', payload.file);
+          companionRes = await fetch('/api/companion/xml', {
+            method: 'POST',
+            body: compForm,
+          });
+        }
       } else {
         const jsonBody = JSON.stringify({
           sample: payload.sample,
@@ -130,21 +149,30 @@ export const App: React.FC = () => {
       const data: AnalyzeResponse = await analyzeRes.json();
       setAnalysis(data);
 
-      if (companionRes.ok) {
-        const xml = await companionRes.text();
-        setScoreXml(xml);
-      } else {
-        setScoreXml(null);
+      let effectiveXml: string | null = null;
+      if (companionRes && companionRes.ok) {
+        effectiveXml = await companionRes.text();
+      } else if (data.data) {
+        effectiveXml = data.data;
       }
+      setScoreXml(effectiveXml);
 
       // Fetch publication-grade LilyPond vector SVG asynchronously
       setLoadingSvg(true);
       (async () => {
         try {
           let svgRes: Response;
-          if (payload.file) {
+          if (effectiveXml) {
+            svgRes = await fetch('/api/companion/svg', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ content: effectiveXml }),
+            });
+          } else if (payload.file) {
             const svgForm = new FormData();
             svgForm.append('file', payload.file);
+            if (apiKey) svgForm.append('apiKey', apiKey);
+            if (visionModel) svgForm.append('model', visionModel);
             svgRes = await fetch('/api/companion/svg', {
               method: 'POST',
               body: svgForm,
@@ -204,7 +232,7 @@ export const App: React.FC = () => {
       triggerAnalyze({ content: textContent.trim() });
     } else if (activeTab === 'upload') {
       if (!selectedFile) {
-        setError('Please select a MusicXML or iReal file to upload.');
+        setError('Please select a chart file (PDF, photo, MusicXML, or iReal) to upload.');
         return;
       }
       triggerAnalyze({ file: selectedFile });
@@ -227,9 +255,17 @@ export const App: React.FC = () => {
     setDownloadingPdf(true);
     try {
       let res: Response;
-      if (activeTab === 'upload' && selectedFile) {
+      if (scoreXml) {
+        res = await fetch('/api/companion/pdf', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: scoreXml }),
+        });
+      } else if (activeTab === 'upload' && selectedFile) {
         const formData = new FormData();
         formData.append('file', selectedFile);
+        if (apiKey) formData.append('apiKey', apiKey);
+        if (visionModel) formData.append('model', visionModel);
         res = await fetch('/api/companion/pdf', { method: 'POST', body: formData });
       } else {
         const jsonBody = JSON.stringify({
@@ -463,21 +499,77 @@ export const App: React.FC = () => {
             )}
 
             {activeTab === 'upload' && (
-              <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:bg-slate-50 transition-colors">
-                <input
-                  type="file"
-                  accept=".musicxml,.xml,.html,.htm"
-                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                  className="hidden"
-                  id="file-upload"
-                />
-                <label htmlFor="file-upload" className="cursor-pointer block">
-                  <Upload className="w-8 h-8 mx-auto text-slate-400 mb-2" />
-                  <span className="text-sm font-semibold text-blue-600 hover:underline">
-                    {selectedFile ? selectedFile.name : 'Click to upload MusicXML or iReal file'}
-                  </span>
-                  <p className="text-xs text-slate-500 mt-1">Supports .musicxml, .xml, .html</p>
-                </label>
+              <div className="space-y-4">
+                <div
+                  className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer ${
+                    selectedFile ? 'border-blue-400 bg-blue-50/30' : 'border-slate-300 hover:bg-slate-50'
+                  }`}
+                  onClick={() => document.getElementById('file-upload')?.click()}
+                >
+                  <input
+                    type="file"
+                    accept=".musicxml,.xml,.html,.htm,.pdf,.png,.jpg,.jpeg,.webp"
+                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                    id="file-upload"
+                  />
+                  <div className="flex flex-col items-center justify-center">
+                    {selectedFile && isVisualFile(selectedFile) ? (
+                      <Camera className="w-10 h-10 text-blue-600 mb-2" />
+                    ) : (
+                      <Upload className="w-10 h-10 text-slate-400 mb-2" />
+                    )}
+                    <span className="text-sm font-semibold text-blue-600 hover:underline">
+                      {selectedFile ? selectedFile.name : 'Click or drop Lead Sheet (PDF / Photo / MusicXML / iReal)'}
+                    </span>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Supports scanned PDF charts, photos (.png, .jpg, .webp), .musicxml, and .html
+                    </p>
+                  </div>
+                </div>
+
+                {selectedFile && isVisualFile(selectedFile) && (
+                  <div className="bg-amber-50/80 border border-amber-200/80 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-amber-900 font-semibold text-xs uppercase tracking-wider">
+                      <Sparkles className="w-4 h-4 text-amber-600" />
+                      Visual Chart Transcription (Gemini Vision AI)
+                    </div>
+                    <p className="text-xs text-amber-800">
+                      This lead sheet image or PDF will be transcribed into measure-by-measure jazz harmony, voice-led with guide tones, and analyzed for harmonic modulation.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                      <div className="flex-1">
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                          Gemini API Key (optional if configured in server $GEMINI_API_KEY)
+                        </label>
+                        <div className="relative">
+                          <Key className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />
+                          <input
+                            type="password"
+                            value={apiKey}
+                            onChange={(e) => {
+                              setApiKey(e.target.value);
+                              localStorage.setItem('gemini_api_key', e.target.value);
+                            }}
+                            placeholder="AIzaSy... (persisted in browser)"
+                            className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-1 focus:ring-blue-500 focus:outline-none bg-white font-mono"
+                          />
+                        </div>
+                      </div>
+                      <div className="w-full sm:w-48">
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1">Vision Model</label>
+                        <select
+                          value={visionModel}
+                          onChange={(e) => setVisionModel(e.target.value)}
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-1 focus:ring-blue-500 focus:outline-none bg-white"
+                        >
+                          <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast)</option>
+                          <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

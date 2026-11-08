@@ -327,3 +327,47 @@ func (s *Server) handleCompanionPDF(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s_guide_tones.pdf\"", title))
 	_, _ = w.Write(pdfBytes)
 }
+
+// CompanionSVGResponse represents the list of SVG pages compiled by LilyPond.
+type CompanionSVGResponse struct {
+	Pages []string `json:"pages"`
+}
+
+func (s *Server) handleCompanionSVG(w http.ResponseWriter, r *http.Request) {
+	tune, err := s.parseTuneFromRequest(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cfg := jazz.DefaultAnnotationConfig()
+	bars := 0 // auto
+
+	lyStr, err := jazz.GenerateLilyPondScoreWithAnnotationConfig(tune, bars, cfg)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to generate LilyPond score: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	tmpDir, err := os.MkdirTemp("", "jazz-svg-*")
+	if err != nil {
+		http.Error(w, "failed to create temp directory", http.StatusInternalServerError)
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+
+	lyPath := filepath.Join(tmpDir, "score.ly")
+	if err := os.WriteFile(lyPath, []byte(lyStr), 0644); err != nil {
+		http.Error(w, "failed to write lilypond file", http.StatusInternalServerError)
+		return
+	}
+
+	pages, err := jazz.CompileLilyPondToSVG(lyPath, tmpDir)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("LilyPond SVG compilation failed: %v", err), http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(CompanionSVGResponse{Pages: pages})
+}

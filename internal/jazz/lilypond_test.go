@@ -34,6 +34,45 @@ func TestLilyPondScoreGenerationAndCompile(t *testing.T) {
 	t.Logf("Successfully compiled print-ready PDF (%d bytes)", info.Size())
 }
 
+func TestLilyPondScoreSVGCompile(t *testing.T) {
+	tune, err := ParseMusicXMLFile("testdata/Jordu.musicxml")
+	if err != nil {
+		t.Fatalf("Failed to parse testdata/Jordu.musicxml: %v", err)
+	}
+
+	lyStr, err := GenerateLilyPondScore(tune)
+	if err != nil {
+		t.Fatalf("GenerateLilyPondScore failed: %v", err)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "jazz-test-svg-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp failed: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	lyFile := tmpDir + "/score.ly"
+	if err := os.WriteFile(lyFile, []byte(lyStr), 0644); err != nil {
+		t.Fatalf("Failed to write ly file: %v", err)
+	}
+
+	pages, err := CompileLilyPondToSVG(lyFile, tmpDir)
+	if err != nil {
+		t.Fatalf("CompileLilyPondToSVG failed: %v", err)
+	}
+
+	if len(pages) == 0 {
+		t.Fatalf("Expected at least 1 SVG page, got 0")
+	}
+
+	for idx, p := range pages {
+		if len(p) < 100 {
+			t.Errorf("SVG page %d unexpectedly short (%d bytes)", idx+1, len(p))
+		}
+	}
+	t.Logf("Successfully compiled %d SVG page(s) (Page 1: %d bytes)", len(pages), len(pages[0]))
+}
+
 func TestDetermineBarsPerLine(t *testing.T) {
 	tests := []struct {
 		name         string

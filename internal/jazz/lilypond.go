@@ -322,8 +322,25 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 	var buf bytes.Buffer
 	buf.WriteString("\\version \"2.24.0\"\n\n")
 
+	staffSize := 19.0
+	if hasMelody {
+		if numSystems > 5 {
+			staffSize = 17.5
+		} else {
+			staffSize = 18.0
+		}
+	} else if numSystems > 6 {
+		staffSize = 18.0
+	}
+	buf.WriteString(fmt.Sprintf("#(set-global-staff-size %.1f)\n\n", staffSize))
+
 	// Paper layout
 	buf.WriteString("\\paper {\n")
+	buf.WriteString("  #(set-paper-size \"letter\")\n")
+	buf.WriteString("  left-margin = 14\\mm\n")
+	buf.WriteString("  right-margin = 14\\mm\n")
+	buf.WriteString("  top-margin = 12\\mm\n")
+	buf.WriteString("  bottom-margin = 12\\mm\n")
 	buf.WriteString("  indent = 0\\mm\n")
 	buf.WriteString("  ragged-right = ##f\n")
 	buf.WriteString("  ragged-bottom = ##t\n")
@@ -332,10 +349,10 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 		buf.WriteString("  page-count = #1\n")
 	}
 	buf.WriteString("  system-system-spacing =\n")
-	buf.WriteString("    #'((basic-distance . 16)\n")
-	buf.WriteString("       (minimum-distance . 12)\n")
-	buf.WriteString("       (padding . 5)\n")
-	buf.WriteString("       (stretchability . 10))\n")
+	buf.WriteString("    #'((basic-distance . 15)\n")
+	buf.WriteString("       (minimum-distance . 11)\n")
+	buf.WriteString("       (padding . 4.5)\n")
+	buf.WriteString("       (stretchability . 8))\n")
 	buf.WriteString("}\n\n")
 
 	// Header
@@ -344,10 +361,10 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 	if title == "" {
 		title = "Lead Sheet"
 	}
-	buf.WriteString(fmt.Sprintf("  title = \"%s\"\n", title))
-	buf.WriteString("  subtitle = \"Guide Tones Companion (3rd & 7th)\"\n")
+	buf.WriteString(fmt.Sprintf("  title = \\markup { \\sans \\bold \\fontsize #3 \"%s\" }\n", title))
+	buf.WriteString("  subtitle = \\markup { \\sans \\italic \\fontsize #-0.5 \"Guide Tones Companion (3rd & 7th)\" }\n")
 	if tune.Composer != "" {
-		buf.WriteString(fmt.Sprintf("  composer = \"%s\"\n", tune.Composer))
+		buf.WriteString(fmt.Sprintf("  composer = \\markup { \\sans \\fontsize #0 \"%s\" }\n", tune.Composer))
 	}
 	buf.WriteString("}\n\n")
 
@@ -489,15 +506,18 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 
 	buf.WriteString("voiceUpper = {\n")
 	buf.WriteString(upperBuf.String())
+	buf.WriteString("  \\bar \"|.\"\n")
 	buf.WriteString("}\n\n")
 
 	buf.WriteString("voiceLower = {\n")
 	buf.WriteString(lowerBuf.String())
+	buf.WriteString("  \\bar \"|.\"\n")
 	buf.WriteString("}\n\n")
 
 	if hasMelody {
 		buf.WriteString("melodyVoice = {\n")
 		buf.WriteString(generateMelodyTrack(tune, barsPerLine))
+		buf.WriteString("  \\bar \"|.\"\n")
 		buf.WriteString("}\n\n")
 	}
 
@@ -528,9 +548,12 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 		buf.WriteString("    } { \\deviceAnnotations }\n")
 	}
 	buf.WriteString("    \\new ChordNames \\with {\n")
+	buf.WriteString("      \\override ChordName.font-family = #'sans\n")
+	buf.WriteString("      \\override ChordName.font-series = #'bold\n")
+	buf.WriteString("      \\override ChordName.font-size = #1.5\n")
 	buf.WriteString("      \\override VerticalAxisGroup.nonstaff-relatedstaff-spacing =\n")
-	buf.WriteString("        #'((basic-distance . 5)\n")
-	buf.WriteString("           (minimum-distance . 4)\n")
+	buf.WriteString("        #'((basic-distance . 5.5)\n")
+	buf.WriteString("           (minimum-distance . 4.5)\n")
 	buf.WriteString("           (padding . 2))\n")
 	buf.WriteString("    } { \\theChords }\n")
 	if hasMelody {
@@ -574,7 +597,14 @@ func GenerateLilyPondScoreWithAnnotationConfig(tune *Tune, userBars int, cfg Ann
 		buf.WriteString("    }\n")
 	}
 	buf.WriteString("  >>\n")
-	buf.WriteString("  \\layout { }\n")
+	buf.WriteString("  \\layout {\n")
+	buf.WriteString("    \\context {\n")
+	buf.WriteString("      \\Score\n")
+	buf.WriteString("      \\override BarNumber.font-family = #'sans\n")
+	buf.WriteString("      \\override BarNumber.font-size = #-1.5\n")
+	buf.WriteString("      \\override BarNumber.padding = #1.2\n")
+	buf.WriteString("    }\n")
+	buf.WriteString("  }\n")
 	buf.WriteString("}\n")
 
 	return buf.String(), nil
@@ -924,6 +954,20 @@ func fifthsToLilyPondKey(fifths int, mode string) string {
 	return "c \\major"
 }
 
+func findLilyPondPath() (string, error) {
+	lilyPath, err := exec.LookPath("lilypond")
+	if err == nil {
+		return lilyPath, nil
+	}
+	if _, errOpt := os.Stat("/opt/homebrew/bin/lilypond"); errOpt == nil {
+		return "/opt/homebrew/bin/lilypond", nil
+	}
+	if _, errLocal := os.Stat("/usr/local/bin/lilypond"); errLocal == nil {
+		return "/usr/local/bin/lilypond", nil
+	}
+	return "", fmt.Errorf("lilypond executable not found in PATH, /opt/homebrew/bin, or /usr/local/bin")
+}
+
 // CompileLilyPondToPDF invokes the system lilypond compiler to produce a print-ready PDF.
 func CompileLilyPondToPDF(lyFile string, outDir string) error {
 	base := strings.TrimSuffix(filepath.Base(lyFile), filepath.Ext(lyFile))
@@ -934,15 +978,9 @@ func CompileLilyPondToPDF(lyFile string, outDir string) error {
 		targetOut = base
 	}
 
-	lilyPath, err := exec.LookPath("lilypond")
+	lilyPath, err := findLilyPondPath()
 	if err != nil {
-		if _, errOpt := os.Stat("/opt/homebrew/bin/lilypond"); errOpt == nil {
-			lilyPath = "/opt/homebrew/bin/lilypond"
-		} else if _, errLocal := os.Stat("/usr/local/bin/lilypond"); errLocal == nil {
-			lilyPath = "/usr/local/bin/lilypond"
-		} else {
-			return fmt.Errorf("lilypond executable not found in PATH, /opt/homebrew/bin, or /usr/local/bin")
-		}
+		return err
 	}
 
 	cmd := exec.Command(lilyPath, "--pdf", "-o", targetOut, lyFile)
@@ -951,4 +989,60 @@ func CompileLilyPondToPDF(lyFile string, outDir string) error {
 		return fmt.Errorf("lilypond compilation failed: %v\nOutput: %s", err, string(out))
 	}
 	return nil
+}
+
+// CompileLilyPondToSVG invokes the system lilypond compiler to produce vector SVG page(s).
+func CompileLilyPondToSVG(lyFile string, outDir string) ([]string, error) {
+	base := strings.TrimSuffix(filepath.Base(lyFile), filepath.Ext(lyFile))
+	var targetOut string
+	if outDir != "" && outDir != "." {
+		targetOut = filepath.Join(outDir, base)
+	} else {
+		targetOut = base
+	}
+
+	lilyPath, err := findLilyPondPath()
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := exec.Command(lilyPath, "--svg", "-o", targetOut, lyFile)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("lilypond svg compilation failed: %v\nOutput: %s", err, string(out))
+	}
+
+	dir := outDir
+	if dir == "" || dir == "." {
+		dir = "."
+	}
+
+	var svgPages []string
+
+	// Single page case: targetOut.svg
+	singlePage := filepath.Join(dir, base+".svg")
+	if content, err := os.ReadFile(singlePage); err == nil {
+		svgPages = append(svgPages, string(content))
+		return svgPages, nil
+	}
+
+	// Multi-page case: targetOut-1.svg, targetOut-2.svg, ...
+	for page := 1; page <= 100; page++ {
+		pageFile := filepath.Join(dir, fmt.Sprintf("%s-%d.svg", base, page))
+		content, err := os.ReadFile(pageFile)
+		if err != nil {
+			pageFileAlt := filepath.Join(dir, fmt.Sprintf("%s-page%d.svg", base, page))
+			content, err = os.ReadFile(pageFileAlt)
+			if err != nil {
+				break
+			}
+		}
+		svgPages = append(svgPages, string(content))
+	}
+
+	if len(svgPages) == 0 {
+		return nil, fmt.Errorf("no SVG files generated for %s", lyFile)
+	}
+
+	return svgPages, nil
 }

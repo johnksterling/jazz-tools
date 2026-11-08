@@ -172,3 +172,29 @@ func TestAnalyzeEndpoint_StandardAutumnLeaves(t *testing.T) {
 		t.Errorf("expected JourneySpans to be non-nil slice, got nil")
 	}
 }
+
+func TestCompanionSVGEndpoint(t *testing.T) {
+	s := newTestServer(t)
+	body := strings.NewReader(`{"sample":"waltz_for_debby"}`)
+	req := httptest.NewRequest("POST", "/api/companion/svg", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	s.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp CompanionSVGResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal companion svg response: %v", err)
+	}
+
+	if len(resp.Pages) == 0 {
+		t.Fatalf("expected at least 1 SVG page, got 0")
+	}
+	if !strings.Contains(resp.Pages[0], "<svg") {
+		t.Errorf("expected valid SVG tag in page 0, got: %s", resp.Pages[0][:min(100, len(resp.Pages[0]))])
+	}
+}

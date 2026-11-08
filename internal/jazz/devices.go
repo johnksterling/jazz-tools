@@ -14,6 +14,8 @@ const (
 	DeviceTritoneSub        DeviceType = "subV"
 	DeviceSecondaryDominant DeviceType = "V/x"
 	DeviceTurnaround        DeviceType = "Turnaround"
+	DeviceChromaticNeighbor DeviceType = "Chromatic Neighbor"
+	DeviceModalInterchange  DeviceType = "Modal Interchange"
 )
 
 // HarmonicDevice describes an identified harmonic device spanning one or more chords.
@@ -285,6 +287,137 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 
 				i++
 				continue
+			}
+		}
+
+		// ---------------------------------------------------------
+		// 5. Check Phrygian Chromatic Neighbor (Major 7th chord 1 semitone above prev or next)
+		// ---------------------------------------------------------
+		if c1.Chord.Quality == QualityMajor7 {
+			var prev *FlatChord
+			if i > 0 {
+				prev = &chords[i-1]
+			}
+
+			// Pattern A: Neighbor embellishment returning to prev chord (prev -> c1 -> prev)
+			// e.g. F^7 -> Gb^7 -> F^7 (major) or D-7 -> Eb^7 -> D-7 (minor)
+			if prev != nil && semitoneDistance(prev.Chord.Root.Name(), c1.Chord.Root.Name()) == 1 &&
+				c2 != nil && c2.Chord.Root.Name() == prev.Chord.Root.Name() {
+				targetKey := c2.TonalCenter
+				if targetKey == "" {
+					targetKey = homeKeyName
+				}
+				tcInfo := GetTonalCenterInfo(targetKey)
+
+				devices = append(devices, HarmonicDevice{
+					Type:          DeviceChromaticNeighbor,
+					Label:         "bIIΔ (Phrygian neighbor)",
+					StartMeasure:  c1.MeasureIndex,
+					StartBeat:     c1.BeatOffset,
+					EndMeasure:    c2.MeasureIndex,
+					EndBeat:       c2.BeatOffset,
+					Resolves:      true,
+					TargetKey:     targetKey,
+					LilyPondColor: tcInfo.LilyPondColor,
+					IsDashed:      false,
+				})
+
+				i++
+				continue
+			}
+
+			// Pattern B: Chromatic neighbor resolving down a half-step to tonic
+			// e.g. Gb^7 -> F^7 or Gb^7 -> Fm7
+			resolvesToTonic := c2 != nil && (c2.Chord.Root.Name() == homeRoot || (c2.TonalCenter != "" && c2.Chord.Root.Name() == strings.Fields(c2.TonalCenter)[0]))
+			if c2 != nil && semitoneDistance(c2.Chord.Root.Name(), c1.Chord.Root.Name()) == 1 && resolvesToTonic {
+				targetKey := c2.TonalCenter
+				if targetKey == "" {
+					targetKey = homeKeyName
+				}
+				tcInfo := GetTonalCenterInfo(targetKey)
+
+				devices = append(devices, HarmonicDevice{
+					Type:          DeviceChromaticNeighbor,
+					Label:         "bIIΔ (Phrygian neighbor)",
+					StartMeasure:  c1.MeasureIndex,
+					StartBeat:     c1.BeatOffset,
+					EndMeasure:    c2.MeasureIndex,
+					EndBeat:       c2.BeatOffset,
+					Resolves:      true,
+					TargetKey:     targetKey,
+					LilyPondColor: tcInfo.LilyPondColor,
+					IsDashed:      false,
+				})
+
+				i++
+				continue
+			}
+		}
+
+		// ---------------------------------------------------------
+		// 6. Check Modal Interchange Chords (bVIIΔ, bVIΔ, bIIIΔ, iv-7, v-7, i-7)
+		// ---------------------------------------------------------
+		if homeMode == "major" {
+			dHome := semitoneDistance(homeRoot, c1.Chord.Root.Name())
+
+			if c1.Chord.Quality == QualityMajor7 {
+				label := ""
+				switch dHome {
+				case 10:
+					label = "bVIIΔ (modal interchange)"
+				case 8:
+					label = "bVIΔ (modal interchange)"
+				case 3:
+					label = "bIIIΔ (modal interchange)"
+				}
+
+				if label != "" {
+					tcInfo := GetTonalCenterInfo(homeKeyName)
+					devices = append(devices, HarmonicDevice{
+						Type:          DeviceModalInterchange,
+						Label:         label,
+						StartMeasure:  c1.MeasureIndex,
+						StartBeat:     c1.BeatOffset,
+						EndMeasure:    c1.MeasureIndex,
+						EndBeat:       c1.BeatOffset + c1.DurationBeats,
+						Resolves:      false,
+						TargetKey:     homeKeyName,
+						LilyPondColor: tcInfo.LilyPondColor,
+						IsDashed:      false,
+					})
+
+					i++
+					continue
+				}
+			} else if c1.Chord.Quality == QualityMinor7 || c1.Chord.Quality == QualityMinorTriad {
+				label := ""
+				switch dHome {
+				case 5:
+					label = "iv-7 (minor subdominant)"
+				case 7:
+					label = "v-7 (minor v)"
+				case 0:
+					label = "i-7 (tonic minor)"
+				}
+
+				if label != "" {
+					tcInfo := GetTonalCenterInfo(homeKeyName)
+					devices = append(devices, HarmonicDevice{
+						Type:          DeviceModalInterchange,
+						Label:         label,
+						StartMeasure:  c1.MeasureIndex,
+						StartBeat:     c1.BeatOffset,
+						EndMeasure:    c1.MeasureIndex,
+						EndBeat:       c1.BeatOffset + c1.DurationBeats,
+						Resolves:      false,
+						TargetKey:     homeKeyName,
+						LilyPondColor: tcInfo.LilyPondColor,
+						IsDashed:      false,
+					})
+
+					i++
+					continue
+				}
 			}
 		}
 

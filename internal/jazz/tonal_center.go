@@ -348,8 +348,54 @@ func AnalyzeTonalCenters(tune *Tune) {
 			}
 		}
 
-		// 3. Explicit Major 7th tonicization (e.g. Ebmaj7, Abmaj7, Dbmaj7)
-		if tc.Chord.Quality == QualityMajor7 {
+		// 3. Phrygian Chromatic Neighbor & Modal Interchange Checks
+		// A chord should NOT trigger a new key center if it is an embellishing chromatic neighbor
+		// or borrowed modal interchange chord within the active/home key framework.
+		isNeighborOrModalInterchange := false
+
+		// Check A: Phrygian Chromatic Neighbor (Major 7th chord 1 semitone above previous chord)
+		// e.g. F^7 -> Gb^7 -> F^7 (Major) or D-7 -> Eb^7 -> D-7 (Minor)
+		if tc.Chord.Quality == QualityMajor7 && i > 0 {
+			prevTc := timedChords[i-1]
+			if semitoneDistance(prevTc.Chord.Root.Name(), tc.Chord.Root.Name()) == 1 {
+				// Returns to previous chord or resolves down a half-step
+				if nextTc != nil && nextTc.Chord.Root.Name() == prevTc.Chord.Root.Name() {
+					isNeighborOrModalInterchange = true
+					newCenter = activeCenter
+				} else if nextTc != nil && semitoneDistance(nextTc.Chord.Root.Name(), tc.Chord.Root.Name()) == 1 &&
+					(nextTc.Chord.Root.Name() == homeRoot || nextTc.Chord.Root.Name() == prevTc.Chord.Root.Name()) {
+					isNeighborOrModalInterchange = true
+					newCenter = activeCenter
+				}
+			}
+		}
+
+		// Check B: Modal Interchange in Home Major Key (e.g. bVIIΔ, bVIΔ, bIIIΔ, iv-7, v-7, i-7)
+		// Applies when currently in the home key framework
+		if !isNeighborOrModalInterchange && activeCenter == homeKeyName && homeMode == "major" {
+			dHome := semitoneDistance(homeRoot, tc.Chord.Root.Name())
+			if tc.Chord.Quality == QualityMajor7 {
+				// bVIIΔ (subtonic, d=10), bVIΔ (submediant, d=8), bIIIΔ (mediant, d=3), bIIΔ (Phrygian, d=1)
+				if dHome == 10 || dHome == 8 || dHome == 3 || dHome == 1 {
+					// Check if this is part of a sequential cycle of 4ths modulation (e.g. Eb^7 -> Ab^7 -> Db^7)
+					isCycleOfFourths := nextTc != nil && nextTc.Chord.Quality == QualityMajor7 &&
+						semitoneDistance(tc.Chord.Root.Name(), nextTc.Chord.Root.Name()) == 5
+					if !isCycleOfFourths {
+						isNeighborOrModalInterchange = true
+						newCenter = homeKeyName
+					}
+				}
+			} else if tc.Chord.Quality == QualityMinor7 || tc.Chord.Quality == QualityMinorTriad {
+				// iv-7 (minor subdominant, d=5), v-7 (minor v, d=7), i-7 (tonic minor, d=0)
+				if dHome == 5 || dHome == 7 || dHome == 0 {
+					isNeighborOrModalInterchange = true
+					newCenter = homeKeyName
+				}
+			}
+		}
+
+		// 4. Explicit Major 7th tonicization (if not neighbor or modal interchange)
+		if !isNeighborOrModalInterchange && tc.Chord.Quality == QualityMajor7 {
 			rootName := tc.Chord.Root.Name()
 			if rootName != activeCenter {
 				if rootName == homeKeyName {
@@ -360,17 +406,20 @@ func AnalyzeTonalCenters(tune *Tune) {
 			}
 		}
 
-		// 4. Minor 7th modal / subdominant shift (e.g. Bbm7 -> Bb min)
-		if (tc.Chord.Quality == QualityMinor7 || tc.Chord.Quality == QualityMinorTriad) && !fitsActive {
+		// 5. Explicit Minor 7th modulation (only if not neighbor or modal interchange)
+		if !isNeighborOrModalInterchange && (tc.Chord.Quality == QualityMinor7 || tc.Chord.Quality == QualityMinorTriad) && !fitsActive && !fitsHome {
 			minKey := tc.Chord.Root.Name() + " min"
 			if minScale := scaleSets[minKey]; minScale != nil && chordFitsScale(tc.Chord, minScale) {
 				newCenter = minKey
 			}
 		}
 
-		// 5. Return to Home Key or Active Key Continuity
-		if newCenter == activeCenter {
-			if fitsActive {
+		// 6. Return to Home Key or Active Key Continuity
+		if newCenter == activeCenter && !isNeighborOrModalInterchange {
+			prevWasTarget := i > 0 && timedChords[i-1].Chord.Root.Name() == strings.Fields(activeCenter)[0]
+			if activeCenter != homeKeyName && fitsHome && prevWasTarget {
+				newCenter = homeKeyName
+			} else if fitsActive {
 				// Stay in active center
 				newCenter = activeCenter
 			} else if fitsHome {

@@ -115,3 +115,63 @@ func TestTonalCenterDetectionJordu(t *testing.T) {
 	journey := HarmonicJourney(tune)
 	t.Logf("Jordu Harmonic Journey:\n  %s", journey)
 }
+
+func TestTonalCenterDetectionBeatrice(t *testing.T) {
+	tune, err := LoadTune("Beatrice")
+	if err != nil {
+		t.Fatalf("failed to load Beatrice: %v", err)
+	}
+
+	AnalyzeTonalCenters(tune)
+
+	// Verify bars 1-4 are all in F (Gb^7 is Phrygian neighbor, Eb^7 is bVIIΔ modal interchange)
+	for bar := 0; bar < 4; bar++ {
+		for _, tc := range tune.Measures[bar].Chords {
+			if tc.TonalCenter != "F" {
+				t.Errorf("expected Bar %d (%s) to have tonal center F, got %s", bar+1, tc.Chord.String(), tc.TonalCenter)
+			}
+		}
+	}
+
+	// Verify bars 5-8 are all in F (Dm7, Eb^7 Phrygian neighbor, Cm7 v-7, Bbm7 iv-7)
+	for bar := 4; bar < 8; bar++ {
+		for _, tc := range tune.Measures[bar].Chords {
+			if tc.TonalCenter != "F" {
+				t.Errorf("expected Bar %d (%s) to have tonal center F, got %s", bar+1, tc.Chord.String(), tc.TonalCenter)
+			}
+		}
+	}
+
+	// Verify bars 11-12 are D min (iiø - V cadence to relative minor)
+	for bar := 10; bar < 12; bar++ {
+		for _, tc := range tune.Measures[bar].Chords {
+			if tc.TonalCenter != "D min" {
+				t.Errorf("expected Bar %d (%s) to have tonal center D min, got %s", bar+1, tc.Chord.String(), tc.TonalCenter)
+			}
+		}
+	}
+
+	// Verify bars 13-16 return to F
+	for bar := 12; bar < 16; bar++ {
+		for _, tc := range tune.Measures[bar].Chords {
+			if tc.TonalCenter != "F" {
+				t.Errorf("expected Bar %d (%s) to have tonal center F, got %s", bar+1, tc.Chord.String(), tc.TonalCenter)
+			}
+		}
+	}
+
+	spans := GetHarmonicJourneySpans(tune)
+	if len(spans) != 3 {
+		t.Fatalf("expected 3 journey spans, got %d: %+v", len(spans), spans)
+	}
+	if spans[0].Center != "F" || spans[0].StartBar != 1 || spans[0].EndBar != 10 {
+		t.Errorf("expected span 0 to be F (bars 1-10), got %+v", spans[0])
+	}
+	if spans[1].Center != "D min" || spans[1].StartBar != 11 || spans[1].EndBar != 12 {
+		t.Errorf("expected span 1 to be D min (bars 11-12), got %+v", spans[1])
+	}
+	if spans[2].Center != "F" || spans[2].StartBar != 13 || spans[2].EndBar != 16 {
+		t.Errorf("expected span 2 to be F (bars 13-16), got %+v", spans[2])
+	}
+}
+

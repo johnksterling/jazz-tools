@@ -198,3 +198,44 @@ func TestDetectHarmonicDevices_NightInTunisia(t *testing.T) {
 		t.Errorf("expected tritone sub device in A Night in Tunisia (Eb7 -> Dm or F7 -> Em)")
 	}
 }
+
+func TestDetectHarmonicDevices_SoftlyBridge(t *testing.T) {
+	// Real Book bridge progression: Ebmaj7 | Fm7 | C7b9 | C7b9 | Fm7 | Fm7 | Fm7 | G7b9
+	tune := &Tune{
+		Title:         "Softly Bridge",
+		Key:           "C minor",
+		TimeSignature: [2]int{4, 4},
+	}
+	chordSyms := []string{
+		"Cm7", "Cm7", "Cm7", "Cm7",
+		"Cm7", "Cm7", "Cm7", "G7b9",
+		"Ebmaj7", "Fm7", "C7b9", "C7b9",
+		"Fm7", "Fm7", "Fm7", "G7b9",
+	}
+	for i, sym := range chordSyms {
+		c, err := ParseChord(sym)
+		if err != nil {
+			t.Fatalf("ParseChord(%s): %v", sym, err)
+		}
+		tune.Measures = append(tune.Measures, TimedMeasure{
+			Number: i + 1,
+			Chords: []TimedChord{{Chord: c, MeasureNumber: i + 1, BeatOffset: 0, DurationBeats: 4}},
+		})
+	}
+
+	devices := DetectHarmonicDevices(tune)
+
+	foundVofIv := false
+	for _, d := range devices {
+		if d.Label == "V / iv" && d.StartMeasure == 10 && d.EndMeasure == 12 {
+			foundVofIv = true
+		}
+		if d.Label == "iv-7 (subdominant minor)" && d.StartMeasure >= 8 && d.StartMeasure <= 14 {
+			t.Errorf("unexpected iv-7 (subdominant minor) in bridge at bar %d: %+v", d.StartMeasure+1, d)
+		}
+	}
+
+	if !foundVofIv {
+		t.Errorf("expected V / iv device spanning bars 11-13 (0-indexed 10-12), got devices: %+v", devices)
+	}
+}

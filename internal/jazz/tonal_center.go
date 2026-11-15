@@ -511,17 +511,26 @@ func AnalyzeTonalCenters(tune *Tune) {
 
 		newCenter := activeCenter
 
-		// 1. Cadential Lookahead: Secondary Dominants (V7 -> target)
+		// 1. Cadential Lookahead: Secondary Dominants (V7 -> target, including multi-bar V7)
 		if tc.Chord.Quality == QualityDominant7 && nextTc != nil {
-			targetPitch := tc.Chord.Root.AddInterval(3, 5) // perfect 4th up (+5 st)
-			targetName := targetPitch.Name()
-			if nextTc.Chord.Root.Name() == targetName {
-				// V7 resolving to target!
-				if nextTc.Chord.Quality == QualityMinor7 || nextTc.Chord.Quality == QualityMinorTriad {
-					targetName += " min"
-				}
-				if !fitsActive || targetName != activeCenter {
-					newCenter = targetName
+			resolveIdx := i + 1
+			for resolveIdx < len(timedChords) &&
+				timedChords[resolveIdx].Chord.Root.Name() == tc.Chord.Root.Name() &&
+				timedChords[resolveIdx].Chord.Quality == QualityDominant7 {
+				resolveIdx++
+			}
+			if resolveIdx < len(timedChords) {
+				resolveTc := timedChords[resolveIdx]
+				targetPitch := tc.Chord.Root.AddInterval(3, 5) // perfect 4th up (+5 st)
+				targetName := targetPitch.Name()
+				if resolveTc.Chord.Root.Name() == targetName {
+					// V7 resolving to target!
+					if resolveTc.Chord.Quality == QualityMinor7 || resolveTc.Chord.Quality == QualityMinorTriad || resolveTc.Chord.Quality == QualityMinor6 {
+						targetName += " min"
+					}
+					if !fitsActive || targetName != activeCenter {
+						newCenter = targetName
+					}
 				}
 			}
 		}
@@ -533,17 +542,22 @@ func AnalyzeTonalCenters(tune *Tune) {
 				// ii-V detected! Resolution target is a 4th up from V
 				finalTargetPitch := nextTc.Chord.Root.AddInterval(3, 5)
 				finalTargetName := finalTargetPitch.Name()
+				isBackdoorToHome := false
 				if tc.Chord.Quality == QualityHalfDiminished {
 					finalTargetName += " min"
 				} else if i+2 < len(timedChords) {
 					targetChord := timedChords[i+2]
 					if targetChord.Chord.Root.Name() == finalTargetName &&
-						(targetChord.Chord.Quality == QualityMinor7 || targetChord.Chord.Quality == QualityMinorTriad) {
+						(targetChord.Chord.Quality == QualityMinor7 || targetChord.Chord.Quality == QualityMinorTriad || targetChord.Chord.Quality == QualityMinor6) {
 						finalTargetName += " min"
+					} else if targetChord.Chord.Root.Name() == homeRoot &&
+						semitoneDistance(homeRoot, nextTc.Chord.Root.Name()) == 10 {
+						// Backdoor iv - bVII7 -> I (e.g. Fm7 -> Bb7 -> Cmaj7 in Lady Bird)
+						isBackdoorToHome = true
 					}
 				}
 
-				if !fitsActive || finalTargetName != activeCenter {
+				if !isBackdoorToHome && (!fitsActive || finalTargetName != activeCenter) {
 					newCenter = finalTargetName
 				}
 			}
@@ -609,8 +623,8 @@ func AnalyzeTonalCenters(tune *Tune) {
 		}
 
 		// Check C: Modal Interchange / Diatonic Chords in Home Minor Key (e.g. bIIΔ Phrygian, bVIΔ, iv-7, IΔ)
-		// Applies when home key is minor (e.g. Nardis in E minor)
-		if !isNeighborOrModalInterchange && activeCenter == homeKeyName && (homeMode == "minor" || homeMode == "dorian") {
+		// Applies when home key is minor (e.g. Nardis in E minor) and no cadential modulation was triggered
+		if !isNeighborOrModalInterchange && newCenter == activeCenter && activeCenter == homeKeyName && (homeMode == "minor" || homeMode == "dorian") {
 			dHome := semitoneDistance(homeRoot, tc.Chord.Root.Name())
 			if tc.Chord.Quality == QualityMajor7 {
 				// bIIΔ (Phrygian, d=1), bVIΔ (Aeolian submediant, d=8), IΔ (Picardy major, d=0)
@@ -661,9 +675,10 @@ func AnalyzeTonalCenters(tune *Tune) {
 		if newCenter == activeCenter && !isNeighborOrModalInterchange && tc.Chord.Quality == QualityMajor7 {
 			rootName := tc.Chord.Root.Name()
 			if rootName != activeCenter {
+				isRelativeMajor := (homeMode == "minor" || homeMode == "dorian") && semitoneDistance(homeRoot, rootName) == 3
 				if rootName == homeKeyName {
 					newCenter = homeKeyName
-				} else if activeCenter != homeKeyName || !fitsHome {
+				} else if activeCenter != homeKeyName || !fitsHome || isRelativeMajor {
 					newCenter = rootName
 				}
 			}
@@ -692,8 +707,13 @@ func AnalyzeTonalCenters(tune *Tune) {
 
 		// 6. Return to Home Key or Active Key Continuity
 		if newCenter == activeCenter && !isNeighborOrModalInterchange {
-			prevWasTarget := i > 0 && timedChords[i-1].Chord.Root.Name() == strings.Fields(activeCenter)[0]
-			if activeCenter != homeKeyName && fitsHome && prevWasTarget {
+			activeRoot := strings.Fields(activeCenter)[0]
+			prevWasTarget := i > 0 && timedChords[i-1].Chord.Root.Name() == activeRoot
+			isSameRootAsActive := tc.Chord.Root.Name() == activeRoot
+			isTwoOfMajorActive := !strings.HasSuffix(activeCenter, "min") && !strings.HasSuffix(activeCenter, "dorian") &&
+				(tc.Chord.Quality == QualityMinor7 || tc.Chord.Quality == QualityMinorTriad) &&
+				semitoneDistance(activeRoot, tc.Chord.Root.Name()) == 2
+			if activeCenter != homeKeyName && fitsHome && prevWasTarget && !isSameRootAsActive && !(homeMode == "minor" && isTwoOfMajorActive) {
 				newCenter = homeKeyName
 			} else if fitsActive {
 				// Stay in active center
@@ -702,14 +722,26 @@ func AnalyzeTonalCenters(tune *Tune) {
 				// Chords fit home key
 				newCenter = homeKeyName
 			} else {
-				// Non-cadential / remote modulation: find best fitting scale
+				// Non-cadential / remote modulation: find best fitting scale deterministically
 				bestKey := activeCenter
 				bestOverlap := -1
-				for k, s := range scaleSets {
-					overlap := chordScaleOverlap(tc.Chord, s)
-					if overlap > bestOverlap {
+				if activeScale := scaleSets[activeCenter]; activeScale != nil {
+					bestOverlap = chordScaleOverlap(tc.Chord, activeScale)
+				}
+				for _, k := range majorKeys {
+					if overlap := chordScaleOverlap(tc.Chord, scaleSets[k]); overlap > bestOverlap {
 						bestOverlap = overlap
 						bestKey = k
+					}
+				}
+				for _, k := range minorKeys {
+					if overlap := chordScaleOverlap(tc.Chord, scaleSets[k+" min"]); overlap > bestOverlap {
+						bestOverlap = overlap
+						bestKey = k + " min"
+					}
+					if overlap := chordScaleOverlap(tc.Chord, scaleSets[k+" dorian"]); overlap > bestOverlap {
+						bestOverlap = overlap
+						bestKey = k + " dorian"
 					}
 				}
 				newCenter = bestKey

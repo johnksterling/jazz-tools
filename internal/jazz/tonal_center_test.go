@@ -465,3 +465,73 @@ func TestTonalCenterDetectionRecordaMe(t *testing.T) {
 	_ = pF4
 	_ = pEb4
 }
+
+func TestTonalCenterDetectionSoftly(t *testing.T) {
+	// 1. Built-in iReal standard
+	tune, err := LoadTune("Softly, As In A Morning Sunrise")
+	if err != nil {
+		t.Fatalf("failed to load Softly, As In A Morning Sunrise: %v", err)
+	}
+
+	AnalyzeTonalCenters(tune)
+
+	// Bar 10 (Fm7 Bb7) through Bar 12 (Ebmaj7) should all be in Eb
+	for bar := 10; bar <= 12; bar++ {
+		for _, tc := range tune.Measures[bar-1].Chords {
+			if tc.TonalCenter != "Eb" {
+				t.Errorf("iReal Softly Bar %d (%s): expected TonalCenter Eb, got %s", bar, tc.Chord.String(), tc.TonalCenter)
+			}
+		}
+	}
+
+	// Bar 13-15 (C7b9 | C7b9 | Fm7) should all be in F min
+	for bar := 13; bar <= 15; bar++ {
+		for _, tc := range tune.Measures[bar-1].Chords {
+			if tc.TonalCenter != "F min" {
+				t.Errorf("iReal Softly Bar %d (%s): expected TonalCenter F min, got %s", bar, tc.Chord.String(), tc.TonalCenter)
+			}
+		}
+	}
+
+	// 2. Old Real Book bridge progression: Ebmaj7 | Fm7 | C7b9 | C7b9 | Fm7 | Fm7 | Fm7 | G7b9
+	pdfBridge := &Tune{
+		Title:         "Softly Bridge (Real Book)",
+		Key:           "C minor",
+		TimeSignature: [2]int{4, 4},
+	}
+	chordSyms := []string{
+		"Cm7", "Cm7", "Cm7", "Cm7",
+		"Cm7", "Cm7", "Cm7", "G7b9",
+		"Ebmaj7", "Fm7", "C7b9", "C7b9",
+		"Fm7", "Fm7", "Fm7", "G7b9",
+	}
+	for i, sym := range chordSyms {
+		c, err := ParseChord(sym)
+		if err != nil {
+			t.Fatalf("ParseChord(%s): %v", sym, err)
+		}
+		pdfBridge.Measures = append(pdfBridge.Measures, TimedMeasure{
+			Number: i + 1,
+			Chords: []TimedChord{{Chord: c, MeasureNumber: i + 1, BeatOffset: 0, DurationBeats: 4}},
+		})
+	}
+
+	AnalyzeTonalCenters(pdfBridge)
+
+	// Bars 9-10 (Ebmaj7 | Fm7) should both be Eb
+	for bar := 9; bar <= 10; bar++ {
+		if got := pdfBridge.Measures[bar-1].Chords[0].TonalCenter; got != "Eb" {
+			t.Errorf("Real Book Softly Bar %d (%s): expected Eb, got %s", bar, pdfBridge.Measures[bar-1].Chords[0].Chord.String(), got)
+		}
+	}
+	// Bars 11-15 (C7b9 | C7b9 | Fm7 | Fm7 | Fm7) should all be F min
+	for bar := 11; bar <= 15; bar++ {
+		if got := pdfBridge.Measures[bar-1].Chords[0].TonalCenter; got != "F min" {
+			t.Errorf("Real Book Softly Bar %d (%s): expected F min, got %s", bar, pdfBridge.Measures[bar-1].Chords[0].Chord.String(), got)
+		}
+	}
+	// Bar 16 (G7b9) returns to C min
+	if got := pdfBridge.Measures[15].Chords[0].TonalCenter; got != "C min" {
+		t.Errorf("Real Book Softly Bar 16 (G7b9): expected C min, got %s", got)
+	}
+}

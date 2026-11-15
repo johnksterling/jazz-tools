@@ -371,7 +371,7 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 		// ---------------------------------------------------------
 		// 6. Check Modal Interchange Chords (bVIIΔ, bVIΔ, bIIIΔ, iv-7, v-7, i-7)
 		// ---------------------------------------------------------
-		if homeMode == "major" {
+		if homeMode == "major" && (c1.TonalCenter == "" || c1.TonalCenter == homeKeyName) {
 			dHome := semitoneDistance(homeRoot, c1.Chord.Root.Name())
 
 			if c1.Chord.Quality == QualityMajor7 {
@@ -438,7 +438,7 @@ func DetectHarmonicDevices(tune *Tune) []HarmonicDevice {
 		// ---------------------------------------------------------
 		// 7. Check Minor Key Modal Interchange / Diatonic Devices (bIIΔ Phrygian, bVIΔ, iv-7, IΔ)
 		// ---------------------------------------------------------
-		if homeMode == "minor" {
+		if homeMode == "minor" && (c1.TonalCenter == "" || c1.TonalCenter == homeKeyName) {
 			dHome := semitoneDistance(homeRoot, c1.Chord.Root.Name())
 			if c1.Chord.Quality == QualityMajor7 {
 				label := ""

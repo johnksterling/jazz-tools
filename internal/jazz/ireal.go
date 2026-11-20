@@ -86,8 +86,8 @@ func ParseIRealTune(musicStr, title, composer, style, key string) (*Tune, error)
 	s = regexp.MustCompile(`N\d`).ReplaceAllString(s, "")
 	// Remove rehearsal marks and section markers like *A, *B, *C, *D, *
 	s = regexp.MustCompile(`\*+[A-Za-z]?`).ReplaceAllString(s, "")
-	// Remove coda, segno, fermata markers: Q, S, f
-	s = regexp.MustCompile(`[QSf]`).ReplaceAllString(s, "")
+	// Remove coda, segno, fermata, and ending markers: Q, S, f, U
+	s = regexp.MustCompile(`[QSfU]`).ReplaceAllString(s, "")
 	// Extract time signature if present, e.g. T44 -> 4/4, T34 -> 3/4
 	tsRegex := regexp.MustCompile(`T(\d)(\d)`)
 	if match := tsRegex.FindStringSubmatch(s); len(match) == 3 {
@@ -199,13 +199,12 @@ func ParseIRealURL(input string) ([]*Tune, error) {
 		return nil, fmt.Errorf("failed to URL decode: %w", err)
 	}
 
-	// Split by '=' and filter out empty strings
+	// Split by '=' and filter out empty strings (preserve raw spacing for UnscrambleIReal)
 	rawTokens := strings.Split(decoded, "=")
 	var tokens []string
 	for _, t := range rawTokens {
-		trimmed := strings.TrimSpace(t)
-		if trimmed != "" {
-			tokens = append(tokens, trimmed)
+		if strings.TrimSpace(t) != "" {
+			tokens = append(tokens, t)
 		}
 	}
 
@@ -217,10 +216,10 @@ func ParseIRealURL(input string) ([]*Tune, error) {
 			(strings.Contains(tok, "|") && (strings.Contains(tok, "T44") || strings.Contains(tok, "*A") || strings.Contains(tok, "-7") || strings.Contains(tok, "^7")))
 
 		if isMusic && i >= 4 {
-			title := tokens[i-4]
-			composer := tokens[i-3]
-			style := tokens[i-2]
-			key := tokens[i-1]
+			title := strings.TrimSpace(tokens[i-4])
+			composer := strings.TrimSpace(tokens[i-3])
+			style := strings.TrimSpace(tokens[i-2])
+			key := strings.TrimSpace(tokens[i-1])
 
 			unscrambled := UnscrambleIReal(tok)
 			tune, err := ParseIRealTune(unscrambled, title, composer, style, key)

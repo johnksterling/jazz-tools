@@ -109,9 +109,9 @@ func GetAllStandards() []StandardTune {
 				if len(parts) > 4 {
 					key = strings.TrimSpace(parts[4])
 				}
-				music := strings.TrimSpace(parts[6])
+				music := parts[6]
 
-				if title != "" && music != "" {
+				if title != "" && strings.TrimSpace(music) != "" {
 					singleURL := "irealb://" + chunk + "==="
 					list = append(list, StandardTune{
 						ID:        fmt.Sprintf("std-%d", i+1),

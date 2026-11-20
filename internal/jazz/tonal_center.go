@@ -525,7 +525,7 @@ func AnalyzeTonalCenters(tune *Tune) {
 				targetName := targetPitch.Name()
 				if resolveTc.Chord.Root.Name() == targetName {
 					// V7 resolving to target!
-					if resolveTc.Chord.Quality == QualityMinor7 || resolveTc.Chord.Quality == QualityMinorTriad || resolveTc.Chord.Quality == QualityMinor6 {
+					if resolveTc.Chord.Quality == QualityMinor7 || resolveTc.Chord.Quality == QualityMinorTriad || resolveTc.Chord.Quality == QualityMinor6 || resolveTc.Chord.Quality == QualityMinorMajor7 {
 						targetName += " min"
 					}
 					if !fitsActive || targetName != activeCenter {
@@ -535,20 +535,28 @@ func AnalyzeTonalCenters(tune *Tune) {
 			}
 		}
 
-		// 2. Cadential Lookahead: ii-V pairs (e.g. Am7 -> D7 or Fm7 -> Bb7)
+		// 2. Cadential Lookahead: ii-V pairs (e.g. Am7 -> D7 or Fm7 -> Bb7, including split V chords like F#7 F#7alt)
 		if (tc.Chord.Quality == QualityMinor7 || tc.Chord.Quality == QualityHalfDiminished) && nextTc != nil && nextTc.Chord.Quality == QualityDominant7 {
 			vTarget := tc.Chord.Root.AddInterval(3, 5) // +5 semitones
 			if nextTc.Chord.Root.Name() == vTarget.Name() {
+				// Advance past consecutive dominant chords with the same root (e.g. F#7 -> F#7alt)
+				vEndIdx := i + 1
+				for vEndIdx+1 < len(timedChords) &&
+					timedChords[vEndIdx+1].Chord.Root.Name() == nextTc.Chord.Root.Name() &&
+					timedChords[vEndIdx+1].Chord.Quality == QualityDominant7 {
+					vEndIdx++
+				}
+
 				// ii-V detected! Resolution target is a 4th up from V
 				finalTargetPitch := nextTc.Chord.Root.AddInterval(3, 5)
 				finalTargetName := finalTargetPitch.Name()
 				isBackdoorToHome := false
 				if tc.Chord.Quality == QualityHalfDiminished {
 					finalTargetName += " min"
-				} else if i+2 < len(timedChords) {
-					targetChord := timedChords[i+2]
+				} else if vEndIdx+1 < len(timedChords) {
+					targetChord := timedChords[vEndIdx+1]
 					if targetChord.Chord.Root.Name() == finalTargetName &&
-						(targetChord.Chord.Quality == QualityMinor7 || targetChord.Chord.Quality == QualityMinorTriad || targetChord.Chord.Quality == QualityMinor6) {
+						(targetChord.Chord.Quality == QualityMinor7 || targetChord.Chord.Quality == QualityMinorTriad || targetChord.Chord.Quality == QualityMinor6 || targetChord.Chord.Quality == QualityMinorMajor7) {
 						finalTargetName += " min"
 					} else if targetChord.Chord.Root.Name() == homeRoot &&
 						semitoneDistance(homeRoot, nextTc.Chord.Root.Name()) == 10 {
@@ -685,7 +693,7 @@ func AnalyzeTonalCenters(tune *Tune) {
 		}
 
 		// 5. Explicit Minor 7th modulation (only if not neighbor or modal interchange)
-		if newCenter == activeCenter && !isNeighborOrModalInterchange && (tc.Chord.Quality == QualityMinor7 || tc.Chord.Quality == QualityMinorTriad || tc.Chord.Quality == QualityMinor6) && !fitsActive && !fitsHome {
+		if newCenter == activeCenter && !isNeighborOrModalInterchange && (tc.Chord.Quality == QualityMinor7 || tc.Chord.Quality == QualityMinorTriad || tc.Chord.Quality == QualityMinor6 || tc.Chord.Quality == QualityMinorMajor7) && !fitsActive && !fitsHome {
 			rootName := tc.Chord.Root.Name()
 			startBar := tc.MeasureNumber
 			endBar := startBar
@@ -715,6 +723,9 @@ func AnalyzeTonalCenters(tune *Tune) {
 				semitoneDistance(activeRoot, tc.Chord.Root.Name()) == 2
 			if activeCenter != homeKeyName && fitsHome && prevWasTarget && !isSameRootAsActive && !(homeMode == "minor" && isTwoOfMajorActive) {
 				newCenter = homeKeyName
+			} else if isSameRootAsActive && tc.Chord.Quality == QualityDominant7 && strings.Contains(tc.Chord.Symbol, "#11") {
+				// Lydian Dominant on the active tonic root (e.g. Db7#11 following Ebm7 | Ab7 in Db)
+				newCenter = activeCenter
 			} else if fitsActive {
 				// Stay in active center
 				newCenter = activeCenter

@@ -535,3 +535,60 @@ func TestTonalCenterDetectionSoftly(t *testing.T) {
 		t.Errorf("Real Book Softly Bar 16 (G7b9): expected C min, got %s", got)
 	}
 }
+
+func TestTonalCenterDetectionInvitation(t *testing.T) {
+	tune, err := LoadTune("Invitation")
+	if err != nil {
+		t.Fatalf("failed to load Invitation: %v", err)
+	}
+
+	AnalyzeTonalCenters(tune)
+
+	// Bars 1-4: C min
+	for bar := 1; bar <= 4; bar++ {
+		if got := tune.Measures[bar-1].Chords[0].TonalCenter; got != "C min" {
+			t.Errorf("Invitation Bar %d: expected C min, got %s", bar, got)
+		}
+	}
+
+	// Bars 13-16: Ebm7 | Ab7 | Db7#11 | Db7#11 -> all Db (not Gb)
+	for bar := 13; bar <= 16; bar++ {
+		if got := tune.Measures[bar-1].Chords[0].TonalCenter; got != "Db" {
+			t.Errorf("Invitation Bar %d (%s): expected Db, got %s", bar, tune.Measures[bar-1].Chords[0].Chord.String(), got)
+		}
+	}
+
+	// Bars 17-20: C#m7 | F#7 F#7alt | Bm7 | Bm7 -> all B min (split V chord must not break ii-V-i lookahead)
+	for bar := 17; bar <= 20; bar++ {
+		for _, tc := range tune.Measures[bar-1].Chords {
+			if tc.TonalCenter != "B min" {
+				t.Errorf("Invitation Bar %d (%s): expected B min, got %s", bar, tc.Chord.String(), tc.TonalCenter)
+			}
+		}
+	}
+
+	// Bars 21-24: Bm7 | E7 E7alt | Am7 | Am7 -> all A min
+	for bar := 21; bar <= 24; bar++ {
+		for _, tc := range tune.Measures[bar-1].Chords {
+			if tc.TonalCenter != "A min" {
+				t.Errorf("Invitation Bar %d (%s): expected A min, got %s", bar, tc.Chord.String(), tc.TonalCenter)
+			}
+		}
+	}
+
+	// Bars 25-28: Am7 | D7 D7alt | Gm7 | Gm7 -> all G min
+	for bar := 25; bar <= 28; bar++ {
+		for _, tc := range tune.Measures[bar-1].Chords {
+			if tc.TonalCenter != "G min" {
+				t.Errorf("Invitation Bar %d (%s): expected G min, got %s", bar, tc.Chord.String(), tc.TonalCenter)
+			}
+		}
+	}
+
+	// Bars 35-38 (Coda): Fh7 | Bb7#9 | Eb-^7 | Eb-^7 -> all Eb min
+	for bar := 35; bar <= 38; bar++ {
+		if got := tune.Measures[bar-1].Chords[0].TonalCenter; got != "Eb min" {
+			t.Errorf("Invitation Bar %d (%s): expected Eb min, got %s", bar, tune.Measures[bar-1].Chords[0].Chord.String(), got)
+		}
+	}
+}

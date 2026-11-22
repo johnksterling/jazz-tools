@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -394,10 +395,18 @@ func (s *Server) handleCompanionPDF(w http.ResponseWriter, r *http.Request) {
 		IncludeAnalysisReport: fullReport,
 	}
 	if fullReport {
-		summary, isLLM, _ := jazz.GenerateHarmonicSummary(tune, jazz.TranscribeOptions{
+		summary, isLLM, sumErr := jazz.GenerateHarmonicSummary(tune, jazz.TranscribeOptions{
 			APIKey: apiKey,
 			Model:  model,
 		})
+		if sumErr != nil {
+			log.Printf("warning: LLM harmonic summary failed (using deterministic fallback): %v", sumErr)
+		}
+		if isLLM {
+			w.Header().Set("X-LLM-Summary", "true")
+		} else {
+			w.Header().Set("X-LLM-Summary", "false")
+		}
 		pdfOpts.HarmonicSummary = summary
 		pdfOpts.IsLLMSummary = isLLM
 	}

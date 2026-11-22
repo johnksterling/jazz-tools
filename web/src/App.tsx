@@ -34,7 +34,7 @@ export const App: React.FC = () => {
   const [textContent, setTextContent] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || '');
-  const [visionModel, setVisionModel] = useState<string>('gemini-2.0-flash');
+  const [visionModel, setVisionModel] = useState<string>('gemini-2.5-flash');
   const [showKeySettings, setShowKeySettings] = useState<boolean>(false);
   const [showKeyPromptModal, setShowKeyPromptModal] = useState<boolean>(false);
   const [pendingKeyInput, setPendingKeyInput] = useState<string>('');
@@ -385,9 +385,9 @@ export const App: React.FC = () => {
                   onChange={(e) => setVisionModel(e.target.value)}
                   className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-1 focus:ring-blue-500 focus:outline-none bg-white"
                 >
+                  <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                  <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
                   <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
-                  <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                  <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
                 </select>
                 {apiKey && (
                   <button
@@ -655,9 +655,9 @@ export const App: React.FC = () => {
                           onChange={(e) => setVisionModel(e.target.value)}
                           className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-1 focus:ring-blue-500 focus:outline-none bg-white"
                         >
-                          <option value="gemini-2.0-flash">Gemini 2.0 Flash (Fast & Accurate)</option>
-                          <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                          <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Reasoning)</option>
+                          <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast & Accurate)</option>
+                          <option value="gemini-2.5-pro">Gemini 2.5 Pro (Deep Reasoning)</option>
+                          <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
                         </select>
                       </div>
                     </div>

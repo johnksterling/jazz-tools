@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -336,16 +337,69 @@ func (s *Server) handleCompanionXML(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCompanionPDF(w http.ResponseWriter, r *http.Request) {
+	var fullReport bool
+	var apiKey, model string
+
+	if qFull := r.URL.Query().Get("full"); qFull == "1" || strings.EqualFold(qFull, "true") {
+		fullReport = true
+	}
+
+	contentType := r.Header.Get("Content-Type")
+	if strings.HasPrefix(contentType, "application/json") && r.Body != nil {
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err == nil {
+			r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+			var meta struct {
+				Full   bool   `json:"full"`
+				APIKey string `json:"apiKey"`
+				Model  string `json:"model"`
+			}
+			if json.Unmarshal(bodyBytes, &meta) == nil {
+				if meta.Full {
+					fullReport = true
+				}
+				apiKey = meta.APIKey
+				model = meta.Model
+			}
+		}
+	}
+
 	tune, err := s.parseTuneFromRequest(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	cfg := jazz.DefaultAnnotationConfig()
-	bars := 0 // auto
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		if fVal := r.FormValue("full"); fVal == "1" || strings.EqualFold(fVal, "true") {
+			fullReport = true
+		}
+		if apiKey == "" {
+			apiKey = r.FormValue("apiKey")
+		}
+		if model == "" {
+			model = r.FormValue("model")
+		}
+	}
+	if apiKey == "" {
+		apiKey = r.Header.Get("X-Gemini-API-Key")
+	}
 
-	lyStr, err := jazz.GenerateLilyPondScoreWithAnnotationConfig(tune, bars, cfg)
+	pdfOpts := jazz.CompanionPDFOptions{
+		BarsPerLine:           0, // auto
+		AnnotationConfig:      jazz.DefaultAnnotationConfig(),
+		IncludeAnalysisReport: fullReport,
+	}
+	if fullReport {
+		summary, isLLM, _ := jazz.GenerateHarmonicSummary(tune, jazz.TranscribeOptions{
+			APIKey: apiKey,
+			Model:  model,
+		})
+		pdfOpts.HarmonicSummary = summary
+		pdfOpts.IsLLMSummary = isLLM
+	}
+
+	lyStr, err := jazz.GenerateLilyPondFullCompanion(tune, pdfOpts)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to generate LilyPond score: %v", err), http.StatusInternalServerError)
 		return

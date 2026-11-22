@@ -35,6 +35,7 @@ export const App: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || '');
   const [visionModel, setVisionModel] = useState<string>('gemini-2.0-flash');
+  const [showKeySettings, setShowKeySettings] = useState<boolean>(false);
 
   // Results & status
   const [loading, setLoading] = useState<boolean>(false);
@@ -327,11 +328,75 @@ export const App: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-3 text-xs">
+            <button
+              type="button"
+              onClick={() => setShowKeySettings((prev) => !prev)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full font-medium border transition-colors ${
+                apiKey
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
+                  : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+              }`}
+              title="Bring Your Own Gemini API Key (stored only in your browser)"
+            >
+              <Key className="w-3.5 h-3.5" />
+              {apiKey ? 'Gemini Key Set' : 'Set Gemini Key'}
+            </button>
             <span className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-medium">
               1,400 Standards &bull; Web &bull; LilyPond
             </span>
           </div>
         </div>
+        {showKeySettings && (
+          <div className="border-t border-slate-200 bg-slate-50/90">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="flex-1 flex items-center gap-2">
+                <Key className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => {
+                    let val = e.target.value.trim();
+                    if (val.includes('=')) {
+                      val = val.split('=').pop()?.trim() || val;
+                    }
+                    val = val.replace(/^["'`]|["'`]$/g, '').trim();
+                    setApiKey(val);
+                    if (val) {
+                      localStorage.setItem('gemini_api_key', val);
+                    } else {
+                      localStorage.removeItem('gemini_api_key');
+                    }
+                  }}
+                  placeholder="Gemini API Key (AIzaSy...) — stored only in browser localStorage for LLM summaries & PDF transcription"
+                  className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-1 focus:ring-blue-500 focus:outline-none bg-white font-mono"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <select
+                  value={visionModel}
+                  onChange={(e) => setVisionModel(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 focus:ring-1 focus:ring-blue-500 focus:outline-none bg-white"
+                >
+                  <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                  <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                  <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                </select>
+                {apiKey && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setApiKey('');
+                      localStorage.removeItem('gemini_api_key');
+                    }}
+                    className="px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg border border-red-200 font-medium"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       {/* Main Content Area */}

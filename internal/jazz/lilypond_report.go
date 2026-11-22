@@ -48,6 +48,7 @@ func GenerateLilyPondFullCompanion(tune *Tune, opts CompanionPDFOptions) (string
 	buf.WriteString(baseScore)
 	buf.WriteString("\n\\pageBreak\n\n")
 	buf.WriteString("\\markuplist {\n")
+	buf.WriteString("  \\override #'(font-family . sans)\n")
 
 	// Section Header
 	buf.WriteString("  \\override #'(baseline-skip . 2.6)\n")
@@ -129,10 +130,20 @@ func GenerateLilyPondFullCompanion(tune *Tune, opts CompanionPDFOptions) (string
 	}
 
 	// 4. Measure-by-Measure Changes & Guide Tones
-	buf.WriteString("  \\abs-fontsize #11 \\bold \"Measure-by-Measure Changes & Guide Tones\"\n")
+	buf.WriteString("  \\sans \\abs-fontsize #11 \\bold \"Measure-by-Measure Changes & Guide Tones\"\n")
 	buf.WriteString("  \\vspace #0.3\n")
-	buf.WriteString("  \\line { \\abs-fontsize #8.5 \\bold \\typewriter \"  Bar   Beat   Chord          Voice 1 (3/7)   Voice 2 (3/7)   Tonal Center\" }\n")
-	buf.WriteString("  \\line { \\abs-fontsize #8.5 \\typewriter \"  ------------------------------------------------------------------------\" }\n")
+	buf.WriteString("  \\line {\n")
+	buf.WriteString("    \\sans \\abs-fontsize #8.5 \\bold \\with-color #(rgb-color 0.35 0.40 0.48) {\n")
+	buf.WriteString("      \\pad-to-box #'(0 . 6) #'(0 . 0) \"Bar\"\n")
+	buf.WriteString("      \\pad-to-box #'(0 . 6) #'(0 . 0) \"Beat\"\n")
+	buf.WriteString("      \\pad-to-box #'(0 . 16) #'(0 . 0) \"Chord\"\n")
+	buf.WriteString("      \\pad-to-box #'(0 . 16) #'(0 . 0) \"Voice 1 (3/7)\"\n")
+	buf.WriteString("      \\pad-to-box #'(0 . 16) #'(0 . 0) \"Voice 2 (3/7)\"\n")
+	buf.WriteString("      \\pad-to-box #'(0 . 14) #'(0 . 0) \"Tonal Center\"\n")
+	buf.WriteString("    }\n")
+	buf.WriteString("  }\n")
+	buf.WriteString("  \\with-color #(rgb-color 0.78 0.82 0.88) \\draw-hline\n")
+	buf.WriteString("  \\vspace #0.15\n")
 
 	pairIdx := 0
 	for _, m := range tune.Measures {
@@ -147,11 +158,18 @@ func GenerateLilyPondFullCompanion(tune *Tune, opts CompanionPDFOptions) (string
 			if color == "" {
 				color = "(rgb-color 0.12 0.16 0.23)"
 			}
-			rowPrefix := fmt.Sprintf("  %3d   %4.1f   %-13s  %-14s  %-14s  ",
-				m.Number, tc.BeatOffset+1.0, tc.Chord.String(), p.Voice1.String(), p.Voice2.String())
-			buf.WriteString(fmt.Sprintf("  \\line { \\abs-fontsize #8.5 \\typewriter \"%s\" \\abs-fontsize #8.5 \\bold \\typewriter \\with-color #%s \"%s\" }\n",
-				escapeLilyPondString(rowPrefix), color, escapeLilyPondString(tc.TonalCenter)))
+			buf.WriteString("  \\line {\n")
+			buf.WriteString("    \\sans \\abs-fontsize #8.5 {\n")
+			buf.WriteString(fmt.Sprintf("      \\pad-to-box #'(0 . 6) #'(0 . 0) \\with-color #(rgb-color 0.40 0.45 0.52) \"%d\"\n", m.Number))
+			buf.WriteString(fmt.Sprintf("      \\pad-to-box #'(0 . 6) #'(0 . 0) \\with-color #(rgb-color 0.40 0.45 0.52) \"%.1f\"\n", tc.BeatOffset+1.0))
+			buf.WriteString(fmt.Sprintf("      \\pad-to-box #'(0 . 16) #'(0 . 0) \\bold \"%s\"\n", escapeLilyPondString(tc.Chord.String())))
+			buf.WriteString(fmt.Sprintf("      \\pad-to-box #'(0 . 16) #'(0 . 0) \"%s\"\n", escapeLilyPondString(p.Voice1.String())))
+			buf.WriteString(fmt.Sprintf("      \\pad-to-box #'(0 . 16) #'(0 . 0) \"%s\"\n", escapeLilyPondString(p.Voice2.String())))
+			buf.WriteString(fmt.Sprintf("      \\pad-to-box #'(0 . 14) #'(0 . 0) \\bold \\with-color #%s \"%s\"\n", color, escapeLilyPondString(tc.TonalCenter)))
+			buf.WriteString("    }\n")
+			buf.WriteString("  }\n")
 		}
+		buf.WriteString("  \\with-color #(rgb-color 0.91 0.93 0.96) \\draw-hline\n")
 	}
 
 	buf.WriteString("}\n")

@@ -175,7 +175,7 @@ func SearchStandards(query string, limit int) []StandardTune {
 		}
 	}
 
-	var results []StandardTune
+	results := []StandardTune{}
 	results = append(results, melodyExact...)
 	results = append(results, otherExact...)
 	results = append(results, melodyPrefix...)

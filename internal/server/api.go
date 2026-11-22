@@ -211,6 +211,9 @@ func (s *Server) handleStandards(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := jazz.SearchStandards(q, limit)
+	if results == nil {
+		results = []jazz.StandardTune{}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(results)
 }

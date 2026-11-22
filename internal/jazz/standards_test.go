@@ -30,6 +30,11 @@ func TestSearchStandards(t *testing.T) {
 	if !foundLeaves {
 		t.Errorf("Autumn Leaves not found in search results for 'Autumn'")
 	}
+
+	empty := SearchStandards("zzzz_no_such_tune_xyz", 10)
+	if empty == nil || len(empty) != 0 {
+		t.Errorf("expected non-nil empty slice for unmatched search, got %#v", empty)
+	}
 }
 
 func TestLoadTuneByStandardTitle(t *testing.T) {

@@ -102,7 +102,7 @@ func runAnalyze(tune *jazz.Tune) {
 	fmt.Println("=============================================================================================")
 }
 
-func runCompanion(tune *jazz.Tune, outputPath string, generatePDF bool, userBars int, cfg jazz.AnnotationConfig) {
+func runCompanion(tune *jazz.Tune, outputPath string, generatePDF bool, userBars int, cfg jazz.AnnotationConfig, fullReport bool, opts jazz.TranscribeOptions) {
 	tune.Title = strings.TrimSpace(tune.Title)
 	tune.Title = strings.TrimSuffix(tune.Title, "(Guide Tones: 3 & 7)")
 	tune.Title = strings.TrimSuffix(tune.Title, "(Guide Tones: 3 &amp; 7)")
@@ -136,7 +136,17 @@ func runCompanion(tune *jazz.Tune, outputPath string, generatePDF bool, userBars
 	fmt.Printf("✓ Created MusicXML companion sheet: %s\n", outputPath)
 
 	if generatePDF {
-		lyStr, err := jazz.GenerateLilyPondScoreWithAnnotationConfig(tune, userBars, cfg)
+		pdfOpts := jazz.CompanionPDFOptions{
+			BarsPerLine:           userBars,
+			AnnotationConfig:      cfg,
+			IncludeAnalysisReport: fullReport,
+		}
+		if fullReport {
+			summary, isLLM, _ := jazz.GenerateHarmonicSummary(tune, opts)
+			pdfOpts.HarmonicSummary = summary
+			pdfOpts.IsLLMSummary = isLLM
+		}
+		lyStr, err := jazz.GenerateLilyPondFullCompanion(tune, pdfOpts)
 		if err != nil {
 			fmt.Printf("Error generating LilyPond score: %v\n", err)
 			return
@@ -182,6 +192,9 @@ func main() {
 		noKeysFlag := compCmd.Bool("no-keys", false, "Omit key center annotations")
 		devicesFlag := compCmd.Bool("devices", true, "Include harmonic device annotations")
 		noDevicesFlag := compCmd.Bool("no-devices", false, "Omit harmonic device annotations")
+		fullFlag := compCmd.Bool("full", false, "Include Harmonic Overview pages (summary, trajectory, devices, measure table) in PDF")
+		apiKeyFlag := compCmd.String("api-key", "", "Gemini API key for LLM harmonic summary (optional)")
+		modelFlag := compCmd.String("model", "gemini-2.5-flash", "Gemini model for LLM harmonic summary")
 
 		if len(os.Args) < 3 {
 			fmt.Println("Error: please provide a MusicXML file or iReal Pro URL.")
@@ -241,7 +254,7 @@ func main() {
 			cfg.ShowDevices = false
 		}
 
-		runCompanion(tune, *outFile, *pdfFlag, *barsFlag, cfg)
+		runCompanion(tune, *outFile, *pdfFlag, *barsFlag, cfg, *fullFlag, jazz.TranscribeOptions{APIKey: *apiKeyFlag, Model: *modelFlag})
 
 	case "analyze":
 		if len(os.Args) < 3 {
@@ -264,6 +277,7 @@ func main() {
 		barsFlag := transcribeCmd.Int("bars", 0, "Measures per line (default: auto)")
 		apiKeyFlag := transcribeCmd.String("api-key", "", "Gemini API key (defaults to $GEMINI_API_KEY)")
 		modelFlag := transcribeCmd.String("model", "gemini-2.5-flash", "Gemini model to use")
+		fullFlag := transcribeCmd.Bool("full", false, "Include Harmonic Overview pages in PDF")
 
 		var target string
 		var flagArgs []string
@@ -301,7 +315,7 @@ func main() {
 
 		if *outFile != "" || *pdfFlag {
 			cfg := jazz.DefaultAnnotationConfig()
-			runCompanion(tune, *outFile, *pdfFlag, *barsFlag, cfg)
+			runCompanion(tune, *outFile, *pdfFlag, *barsFlag, cfg, *fullFlag, jazz.TranscribeOptions{APIKey: *apiKeyFlag, Model: *modelFlag})
 		}
 
 	case "serve":

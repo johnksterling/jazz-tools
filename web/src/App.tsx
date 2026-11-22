@@ -250,7 +250,7 @@ export const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleDownloadPdf = async () => {
+  const handleDownloadPdf = async (full = false) => {
     if (!analysis) return;
     setDownloadingPdf(true);
     try {
@@ -259,11 +259,17 @@ export const App: React.FC = () => {
         res = await fetch('/api/companion/pdf', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: scoreXml }),
+          body: JSON.stringify({
+            content: scoreXml,
+            full,
+            apiKey: apiKey || undefined,
+            model: visionModel || undefined,
+          }),
         });
       } else if (activeTab === 'upload' && selectedFile) {
         const formData = new FormData();
         formData.append('file', selectedFile);
+        if (full) formData.append('full', 'true');
         if (apiKey) formData.append('apiKey', apiKey);
         if (visionModel) formData.append('model', visionModel);
         res = await fetch('/api/companion/pdf', { method: 'POST', body: formData });
@@ -272,6 +278,9 @@ export const App: React.FC = () => {
           sample: activeTab === 'sample' ? selectedSample : undefined,
           content: activeTab === 'text' ? textContent.trim() : undefined,
           standard: activeTab === 'search' ? (selectedStandard?.title || analysis.title) : undefined,
+          full,
+          apiKey: apiKey || undefined,
+          model: visionModel || undefined,
         });
         res = await fetch('/api/companion/pdf', {
           method: 'POST',
@@ -289,7 +298,7 @@ export const App: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${analysis.title.replace(/\s+/g, '_')}_guide_tones.pdf`;
+      a.download = `${analysis.title.replace(/\s+/g, '_')}_${full ? 'full_companion' : 'guide_tones'}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
@@ -652,7 +661,7 @@ export const App: React.FC = () => {
               </div>
 
               {/* Download / Export Buttons */}
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2.5">
                 <button
                   onClick={handleDownloadXml}
                   disabled={!scoreXml}
@@ -662,12 +671,21 @@ export const App: React.FC = () => {
                   MusicXML
                 </button>
                 <button
-                  onClick={handleDownloadPdf}
+                  onClick={() => handleDownloadPdf(false)}
                   disabled={downloadingPdf}
                   className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
                 >
                   <Download className="w-4 h-4" />
                   {downloadingPdf ? 'Compiling PDF...' : 'LilyPond PDF'}
+                </button>
+                <button
+                  onClick={() => handleDownloadPdf(true)}
+                  disabled={downloadingPdf}
+                  title="Includes Score + Harmonic Summary, Trajectory, Devices & Measure Table"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {downloadingPdf ? 'Compiling PDF...' : 'Full Companion PDF'}
                 </button>
               </div>
             </div>

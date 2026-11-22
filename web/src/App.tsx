@@ -36,6 +36,8 @@ export const App: React.FC = () => {
   const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem('gemini_api_key') || '');
   const [visionModel, setVisionModel] = useState<string>('gemini-2.0-flash');
   const [showKeySettings, setShowKeySettings] = useState<boolean>(false);
+  const [showKeyPromptModal, setShowKeyPromptModal] = useState<boolean>(false);
+  const [pendingKeyInput, setPendingKeyInput] = useState<string>('');
 
   // Results & status
   const [loading, setLoading] = useState<boolean>(false);
@@ -251,8 +253,14 @@ export const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleDownloadPdf = async (full = false) => {
+  const handleDownloadPdf = async (full = false, overrideKey?: string, skipKeyPrompt = false) => {
     if (!analysis) return;
+    const effectiveKey = overrideKey !== undefined ? overrideKey : apiKey;
+    if (full && !effectiveKey && !skipKeyPrompt) {
+      setPendingKeyInput('');
+      setShowKeyPromptModal(true);
+      return;
+    }
     setDownloadingPdf(true);
     try {
       let res: Response;
@@ -263,7 +271,7 @@ export const App: React.FC = () => {
           body: JSON.stringify({
             content: scoreXml,
             full,
-            apiKey: apiKey || undefined,
+            apiKey: effectiveKey || undefined,
             model: visionModel || undefined,
           }),
         });
@@ -271,7 +279,7 @@ export const App: React.FC = () => {
         const formData = new FormData();
         formData.append('file', selectedFile);
         if (full) formData.append('full', 'true');
-        if (apiKey) formData.append('apiKey', apiKey);
+        if (effectiveKey) formData.append('apiKey', effectiveKey);
         if (visionModel) formData.append('model', visionModel);
         res = await fetch('/api/companion/pdf', { method: 'POST', body: formData });
       } else {
@@ -280,7 +288,7 @@ export const App: React.FC = () => {
           content: activeTab === 'text' ? textContent.trim() : undefined,
           standard: activeTab === 'search' ? (selectedStandard?.title || analysis.title) : undefined,
           full,
-          apiKey: apiKey || undefined,
+          apiKey: effectiveKey || undefined,
           model: visionModel || undefined,
         });
         res = await fetch('/api/companion/pdf', {
@@ -776,6 +784,74 @@ export const App: React.FC = () => {
           </div>
         )}
       </main>
+
+      {/* Gemini API Key Prompt Modal for Full Companion PDF */}
+      {showKeyPromptModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Add Gemini Key for LLM Summary?</h3>
+                <p className="text-xs text-slate-500">Stored only in your browser&apos;s localStorage (BYOK)</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Enter your Google AI Studio Gemini API key to include an LLM-generated harmonic narrative in the PDF, or skip to use the built-in deterministic summary.
+            </p>
+            <div className="space-y-2">
+              <div className="relative">
+                <Key className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />
+                <input
+                  type="password"
+                  autoFocus
+                  value={pendingKeyInput}
+                  onChange={(e) => setPendingKeyInput(e.target.value)}
+                  placeholder="AIzaSy..."
+                  className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono"
+                />
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowKeyPromptModal(false)}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowKeyPromptModal(false);
+                  handleDownloadPdf(true, '', true);
+                }}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-700 border border-slate-300 hover:bg-slate-50 rounded-xl"
+              >
+                Skip LLM
+              </button>
+              <button
+                type="button"
+                disabled={!pendingKeyInput.trim()}
+                onClick={() => {
+                  let val = pendingKeyInput.trim();
+                  if (val.includes('=')) val = val.split('=').pop()?.trim() || val;
+                  val = val.replace(/^["'`]|["'`]$/g, '').trim();
+                  setApiKey(val);
+                  if (val) localStorage.setItem('gemini_api_key', val);
+                  setShowKeyPromptModal(false);
+                  handleDownloadPdf(true, val, true);
+                }}
+                className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 rounded-xl shadow-sm"
+              >
+                Save &amp; Generate PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

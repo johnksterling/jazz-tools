@@ -62,7 +62,7 @@ export const App: React.FC = () => {
     if (!searchQuery.trim()) {
       fetch('/api/standards?limit=12')
         .then((res) => (res.ok ? res.json() : []))
-        .then((data: StandardTune[]) => setSearchResults(data))
+        .then((data: StandardTune[]) => setSearchResults(Array.isArray(data) ? data : []))
         .catch(() => {});
       return;
     }
@@ -72,7 +72,7 @@ export const App: React.FC = () => {
       fetch(`/api/standards?q=${encodeURIComponent(searchQuery)}&limit=24`)
         .then((res) => (res.ok ? res.json() : []))
         .then((data: StandardTune[]) => {
-          setSearchResults(data);
+          setSearchResults(Array.isArray(data) ? data : []);
           setSearching(false);
         })
         .catch(() => setSearching(false));

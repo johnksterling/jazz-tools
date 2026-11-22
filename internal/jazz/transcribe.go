@@ -397,11 +397,11 @@ func cleanAPIKey(raw string) string {
 
 func normalizeModel(model string) string {
 	m := strings.TrimSpace(model)
-	if m == "" || m == "gemini-2.5-flash" || m == "gemini-2.0-flash" {
-		return "gemini-2.0-flash"
+	if m == "" || m == "gemini-1.5-flash" {
+		return "gemini-2.5-flash"
 	}
-	if m == "gemini-2.5-pro" || m == "gemini-2.0-pro" || m == "gemini-1.5-pro" {
-		return "gemini-1.5-pro"
+	if m == "gemini-2.0-pro" || m == "gemini-1.5-pro" {
+		return "gemini-2.5-pro"
 	}
 	return m
 }

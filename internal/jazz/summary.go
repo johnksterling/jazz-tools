@@ -163,7 +163,7 @@ Measure-by-measure Chords:
 		},
 		"generationConfig": map[string]interface{}{
 			"temperature":     0.3,
-			"maxOutputTokens": 300,
+			"maxOutputTokens": 1024,
 		},
 	}
 
@@ -172,57 +172,71 @@ Measure-by-measure Chords:
 		return BuildDeterministicHarmonicSummary(tune), false, err
 	}
 
-	var apiURL string
-	if isBearer {
-		apiURL = fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent", model)
-	} else {
-		apiURL = fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, url.QueryEscape(authKey))
+	callGemini := func(targetModel string) (string, int, error) {
+		var apiURL string
+		if isBearer {
+			apiURL = fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent", targetModel)
+		} else {
+			apiURL = fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", targetModel, url.QueryEscape(authKey))
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(reqJSON))
+		if err != nil {
+			return "", 0, err
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		if isBearer {
+			httpReq.Header.Set("Authorization", "Bearer "+authKey)
+		} else {
+			httpReq.Header.Set("x-goog-api-key", authKey)
+		}
+
+		client := &http.Client{Timeout: 20 * time.Second}
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			return "", 0, err
+		}
+		defer resp.Body.Close()
+
+		respBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", resp.StatusCode, err
+		}
+		if resp.StatusCode != http.StatusOK {
+			return "", resp.StatusCode, fmt.Errorf("gemini summary status %d: %s", resp.StatusCode, strings.TrimSpace(string(respBytes)))
+		}
+
+		var apiResp struct {
+			Candidates []struct {
+				Content struct {
+					Parts []struct {
+						Text string `json:"text"`
+					} `json:"parts"`
+				} `json:"content"`
+			} `json:"candidates"`
+		}
+		if err := json.Unmarshal(respBytes, &apiResp); err != nil ||
+			len(apiResp.Candidates) == 0 ||
+			len(apiResp.Candidates[0].Content.Parts) == 0 {
+			return "", resp.StatusCode, fmt.Errorf("empty gemini summary response")
+		}
+
+		text := strings.TrimSpace(apiResp.Candidates[0].Content.Parts[0].Text)
+		if text == "" {
+			return "", resp.StatusCode, fmt.Errorf("blank gemini summary text")
+		}
+		return text, resp.StatusCode, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(reqJSON))
+	text, statusCode, err := callGemini(model)
+	if err != nil && statusCode == http.StatusNotFound && model != "gemini-2.5-flash" {
+		text, _, err = callGemini("gemini-2.5-flash")
+	}
 	if err != nil {
 		return BuildDeterministicHarmonicSummary(tune), false, err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	if isBearer {
-		httpReq.Header.Set("Authorization", "Bearer "+authKey)
-	} else {
-		httpReq.Header.Set("x-goog-api-key", authKey)
-	}
-
-	client := &http.Client{Timeout: 20 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return BuildDeterministicHarmonicSummary(tune), false, err
-	}
-	defer resp.Body.Close()
-
-	respBytes, err := io.ReadAll(resp.Body)
-	if err != nil || resp.StatusCode != http.StatusOK {
-		return BuildDeterministicHarmonicSummary(tune), false, fmt.Errorf("gemini summary status %d", resp.StatusCode)
-	}
-
-	var apiResp struct {
-		Candidates []struct {
-			Content struct {
-				Parts []struct {
-					Text string `json:"text"`
-				} `json:"parts"`
-			} `json:"content"`
-		} `json:"candidates"`
-	}
-	if err := json.Unmarshal(respBytes, &apiResp); err != nil ||
-		len(apiResp.Candidates) == 0 ||
-		len(apiResp.Candidates[0].Content.Parts) == 0 {
-		return BuildDeterministicHarmonicSummary(tune), false, fmt.Errorf("empty gemini summary response")
-	}
-
-	text := strings.TrimSpace(apiResp.Candidates[0].Content.Parts[0].Text)
-	if text == "" {
-		return BuildDeterministicHarmonicSummary(tune), false, nil
 	}
 	return text, true, nil
 }

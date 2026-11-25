@@ -58,6 +58,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/companion/pdf", s.handleCompanionPDF)
 	s.mux.HandleFunc("POST /api/companion/svg", s.handleCompanionSVG)
 	s.mux.HandleFunc("POST /api/batch/msf", s.handleBatchMSF)
+	s.mux.HandleFunc("POST /api/batch/msf/start", s.handleBatchMSFStart)
+	s.mux.HandleFunc("GET /api/batch/status/{id}", s.handleBatchStatus)
+	s.mux.HandleFunc("GET /api/batch/download/{id}", s.handleBatchDownload)
 
 	// Static SPA file handler
 	fileServer := http.FileServerFS(s.staticFS)

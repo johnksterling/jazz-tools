@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
+	"sync/atomic"
 )
 
 // BatchOptions controls how a MobileSheets .msf setlist is batch-processed.
@@ -80,101 +82,156 @@ func ProcessMSFToDir(msfData []byte, outDir string, opts BatchOptions) (string, 
 	}
 	defer os.RemoveAll(tmpWorkDir)
 
-	results := make([]BatchResultItem, 0, len(archive.Songs))
+	results := make([]BatchResultItem, len(archive.Songs))
+	type songMeta struct {
+		composer string
+		key      string
+	}
+	metas := make([]songMeta, len(archive.Songs))
+
+	const maxWorkers = 4
+	workers := maxWorkers
+	if len(archive.Songs) < workers {
+		workers = len(archive.Songs)
+	}
+	if workers < 1 {
+		workers = 1
+	}
+
+	jobs := make(chan int, len(archive.Songs))
+	for idx := range archive.Songs {
+		jobs <- idx
+	}
+	close(jobs)
+
+	var completed atomic.Int32
+	var progressMu sync.Mutex
+	var wg sync.WaitGroup
+
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for idx := range jobs {
+				song := archive.Songs[idx]
+				item := BatchResultItem{
+					Index:            idx + 1,
+					OriginalTitle:    song.Title,
+					OriginalFilename: song.Filename,
+				}
+
+				tune, source, matchedStd, err := resolveSongTune(song, opts)
+				if err != nil {
+					item.Source = "error"
+					item.Error = err.Error()
+					results[idx] = item
+					c := int(completed.Add(1))
+					if opts.Progress != nil {
+						progressMu.Lock()
+						opts.Progress(c, len(archive.Songs), song, "error")
+						progressMu.Unlock()
+					}
+					continue
+				}
+
+				item.Source = source
+				item.MatchedStandard = matchedStd
+				item.Composer = tune.Composer
+				item.Key = tune.KeyName()
+				metas[idx] = songMeta{composer: tune.Composer, key: tune.KeyName()}
+
+				pdfOpts := CompanionPDFOptions{
+					BarsPerLine:           opts.BarsPerLine,
+					AnnotationConfig:      opts.AnnotationConfig,
+					IncludeAnalysisReport: opts.FullReport,
+				}
+				if opts.FullReport {
+					summary, isLLM, _ := GenerateHarmonicSummary(tune, opts.TranscribeOpts)
+					pdfOpts.HarmonicSummary = summary
+					pdfOpts.IsLLMSummary = isLLM
+				}
+
+				lyStr, err := GenerateLilyPondFullCompanion(tune, pdfOpts)
+				if err != nil {
+					item.Source = "error"
+					item.Error = fmt.Sprintf("LilyPond generation failed: %v", err)
+					results[idx] = item
+					c := int(completed.Add(1))
+					if opts.Progress != nil {
+						progressMu.Lock()
+						opts.Progress(c, len(archive.Songs), song, "error")
+						progressMu.Unlock()
+					}
+					continue
+				}
+
+				base := fmt.Sprintf("%02d_%s", idx+1, sanitizeFilePart(song.Title))
+				lyPath := filepath.Join(tmpWorkDir, base+".ly")
+				if err := os.WriteFile(lyPath, []byte(lyStr), 0644); err != nil {
+					item.Source = "error"
+					item.Error = err.Error()
+					results[idx] = item
+					completed.Add(1)
+					continue
+				}
+
+				if err := CompileLilyPondToPDF(lyPath, tmpWorkDir); err != nil {
+					item.Source = "error"
+					item.Error = fmt.Sprintf("LilyPond compile failed: %v", err)
+					results[idx] = item
+					completed.Add(1)
+					continue
+				}
+
+				suffix := "_companion.pdf"
+				if opts.FullReport {
+					suffix = "_full_companion.pdf"
+				}
+				outFileName := base + suffix
+				compiledPDFPath := filepath.Join(tmpWorkDir, base+".pdf")
+				pdfBytes, err := os.ReadFile(compiledPDFPath)
+				if err != nil {
+					item.Source = "error"
+					item.Error = err.Error()
+					results[idx] = item
+					completed.Add(1)
+					continue
+				}
+
+				if err := os.WriteFile(filepath.Join(outDir, outFileName), pdfBytes, 0644); err != nil {
+					item.Source = "error"
+					item.Error = err.Error()
+					results[idx] = item
+					completed.Add(1)
+					continue
+				}
+
+				item.OutputFilename = outFileName
+				results[idx] = item
+				c := int(completed.Add(1))
+				if opts.Progress != nil {
+					progressMu.Lock()
+					opts.Progress(c, len(archive.Songs), song, source)
+					progressMu.Unlock()
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
 	var csvRows [][]string
 	csvRows = append(csvRows, []string{"Title", "Artists", "Keys", "Setlists", "Files"})
-
 	companionSetlist := archive.SetlistName + " (Companion)"
-
-	for idx, song := range archive.Songs {
-		item := BatchResultItem{
-			Index:            idx + 1,
-			OriginalTitle:    song.Title,
-			OriginalFilename: song.Filename,
-		}
-
-		if opts.Progress != nil {
-			opts.Progress(idx+1, len(archive.Songs), song, "analyzing")
-		}
-
-		tune, source, matchedStd, err := resolveSongTune(song, opts)
-		if err != nil {
-			item.Source = "error"
-			item.Error = err.Error()
-			results = append(results, item)
+	for idx, item := range results {
+		if item.Source == "error" {
 			continue
 		}
-
-		item.Source = source
-		item.MatchedStandard = matchedStd
-		item.Composer = tune.Composer
-		item.Key = tune.KeyName()
-
-		pdfOpts := CompanionPDFOptions{
-			BarsPerLine:           opts.BarsPerLine,
-			AnnotationConfig:      opts.AnnotationConfig,
-			IncludeAnalysisReport: opts.FullReport,
-		}
-		if opts.FullReport {
-			summary, isLLM, _ := GenerateHarmonicSummary(tune, opts.TranscribeOpts)
-			pdfOpts.HarmonicSummary = summary
-			pdfOpts.IsLLMSummary = isLLM
-		}
-
-		lyStr, err := GenerateLilyPondFullCompanion(tune, pdfOpts)
-		if err != nil {
-			item.Source = "error"
-			item.Error = fmt.Sprintf("LilyPond generation failed: %v", err)
-			results = append(results, item)
-			continue
-		}
-
-		base := fmt.Sprintf("%02d_%s", idx+1, sanitizeFilePart(song.Title))
-		lyPath := filepath.Join(tmpWorkDir, base+".ly")
-		if err := os.WriteFile(lyPath, []byte(lyStr), 0644); err != nil {
-			item.Source = "error"
-			item.Error = err.Error()
-			results = append(results, item)
-			continue
-		}
-
-		if err := CompileLilyPondToPDF(lyPath, tmpWorkDir); err != nil {
-			item.Source = "error"
-			item.Error = fmt.Sprintf("LilyPond compile failed: %v", err)
-			results = append(results, item)
-			continue
-		}
-
-		suffix := "_companion.pdf"
-		if opts.FullReport {
-			suffix = "_full_companion.pdf"
-		}
-		outFileName := base + suffix
-		compiledPDFPath := filepath.Join(tmpWorkDir, base+".pdf")
-		pdfBytes, err := os.ReadFile(compiledPDFPath)
-		if err != nil {
-			item.Source = "error"
-			item.Error = err.Error()
-			results = append(results, item)
-			continue
-		}
-
-		if err := os.WriteFile(filepath.Join(outDir, outFileName), pdfBytes, 0644); err != nil {
-			item.Source = "error"
-			item.Error = err.Error()
-			results = append(results, item)
-			continue
-		}
-
-		item.OutputFilename = outFileName
-		results = append(results, item)
-
 		csvRows = append(csvRows, []string{
-			song.Title + " (Companion)",
-			tune.Composer,
-			tune.KeyName(),
+			item.OriginalTitle + " (Companion)",
+			metas[idx].composer,
+			metas[idx].key,
 			companionSetlist,
-			outFileName,
+			item.OutputFilename,
 		})
 	}
 

@@ -20,6 +20,7 @@ func printUsage() {
 	fmt.Println("  jazz-tools companion <file.musicxml | irealb://... | file.html> [-o out.musicxml] [--pdf]")
 	fmt.Println("  jazz-tools analyze <file.musicxml | irealb://... | file.html>")
 	fmt.Println("  jazz-tools transcribe <chart.pdf | chart.png | chart.jpg> [-o out.musicxml] [--pdf]")
+	fmt.Println("  jazz-tools batch <setlist.msf> [-o outdir] [--zip bundle.zip] [--full] [--transcribe]")
 	fmt.Println("  jazz-tools serve [--port 8080] [--host 0.0.0.0]")
 	fmt.Println("  jazz-tools <file.musicxml | irealb://... | chart.pdf | chart.png>")
 	fmt.Println()
@@ -28,6 +29,7 @@ func printUsage() {
 	fmt.Println("               voice-led 3rds and 7ths on the staff for each chord's duration.")
 	fmt.Println("  analyze      Display tune structure, timing, chord progression, and guide tones.")
 	fmt.Println("  transcribe   Transcribe a scanned PDF or photo of a jazz lead sheet using Vision LLM.")
+	fmt.Println("  batch        Batch-analyze a MobileSheets .msf setlist into companion PDFs + CSV import.")
 	fmt.Println("  serve        Launch the web interface and REST API server.")
 	fmt.Println()
 	fmt.Println("Flags for companion:")
@@ -318,6 +320,73 @@ func main() {
 			runCompanion(tune, *outFile, *pdfFlag, *barsFlag, cfg, *fullFlag, jazz.TranscribeOptions{APIKey: *apiKeyFlag, Model: *modelFlag})
 		}
 
+	case "batch":
+		batchCmd := flag.NewFlagSet("batch", flag.ExitOnError)
+		outDirFlag := batchCmd.String("o", "mobilesheets_companion", "Output directory for PDFs and MobileSheets CSV")
+		zipFlag := batchCmd.String("zip", "", "Optional output .zip path instead of directory")
+		fullFlag := batchCmd.Bool("full", true, "Include Harmonic Overview pages (summary, trajectory, devices, measure table)")
+		transcribeFlag := batchCmd.Bool("transcribe", false, "Always transcribe embedded PDFs via Gemini Vision instead of matching built-in standards")
+		barsFlag := batchCmd.Int("bars", 0, "Measures per line (default: auto)")
+		apiKeyFlag := batchCmd.String("api-key", "", "Gemini API key (defaults to $GEMINI_API_KEY)")
+		modelFlag := batchCmd.String("model", "gemini-2.5-flash", "Gemini model to use")
+
+		var target string
+		var flagArgs []string
+		for _, arg := range os.Args[2:] {
+			if !strings.HasPrefix(arg, "-") && target == "" {
+				target = arg
+			} else {
+				flagArgs = append(flagArgs, arg)
+			}
+		}
+		batchCmd.Parse(flagArgs)
+
+		if target == "" {
+			fmt.Println("Error: please provide a MobileSheets .msf setlist file.")
+			fmt.Println("Usage: jazz-tools batch <setlist.msf> [-o outdir] [--zip bundle.zip] [--full] [--transcribe]")
+			os.Exit(1)
+		}
+
+		msfBytes, err := os.ReadFile(target)
+		if err != nil {
+			fmt.Printf("Error reading .msf file %s: %v\n", target, err)
+			os.Exit(1)
+		}
+
+		opts := jazz.BatchOptions{
+			FullReport:       *fullFlag,
+			ForceVision:      *transcribeFlag,
+			BarsPerLine:      *barsFlag,
+			AnnotationConfig: jazz.DefaultAnnotationConfig(),
+			TranscribeOpts: jazz.TranscribeOptions{
+				APIKey: *apiKeyFlag,
+				Model:  *modelFlag,
+			},
+			Progress: func(idx, total int, song jazz.MSFSong, status string) {
+				fmt.Printf("[%2d/%2d] %s (%s)...\n", idx, total, song.Title, status)
+			},
+		}
+
+		if *zipFlag != "" {
+			zipBytes, setlistName, results, err := jazz.ProcessMSFToZip(msfBytes, opts)
+			if err != nil {
+				fmt.Printf("Batch error: %v\n", err)
+				os.Exit(1)
+			}
+			if err := os.WriteFile(*zipFlag, zipBytes, 0644); err != nil {
+				fmt.Printf("Error writing zip %s: %v\n", *zipFlag, err)
+				os.Exit(1)
+			}
+			printBatchSummary(setlistName, *zipFlag, results)
+		} else {
+			setlistName, results, err := jazz.ProcessMSFToDir(msfBytes, *outDirFlag, opts)
+			if err != nil {
+				fmt.Printf("Batch error: %v\n", err)
+				os.Exit(1)
+			}
+			printBatchSummary(setlistName, *outDirFlag, results)
+		}
+
 	case "serve":
 		serveCmd := flag.NewFlagSet("serve", flag.ExitOnError)
 		defaultPort := 8080
@@ -373,5 +442,23 @@ func main() {
 		runAnalyze(tune)
 		fmt.Println()
 		fmt.Printf("Tip: Run 'jazz-tools companion %s --pdf' to generate printable guide tone companion sheets.\n", target)
+	}
+}
+
+func printBatchSummary(setlistName, dest string, results []jazz.BatchResultItem) {
+	succeeded := 0
+	for _, r := range results {
+		if r.Source != "error" {
+			succeeded++
+		}
+	}
+	fmt.Println()
+	fmt.Printf("✓ MobileSheets Setlist %q: %d/%d companion PDFs written to %s\n", setlistName, succeeded, len(results), dest)
+	for _, r := range results {
+		if r.Source == "error" {
+			fmt.Printf("  ✗ [%02d] %s: %s\n", r.Index, r.OriginalTitle, r.Error)
+		} else {
+			fmt.Printf("  ✓ [%02d] %s (%s) -> %s\n", r.Index, r.OriginalTitle, r.Source, r.OutputFilename)
+		}
 	}
 }

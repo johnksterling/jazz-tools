@@ -491,3 +491,60 @@ func (s *Server) handleCompanionSVG(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(CompanionSVGResponse{Pages: pages})
 }
+
+func (s *Server) handleBatchMSF(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(50 << 20); err != nil { // 50MB limit for .msf bundles
+		http.Error(w, fmt.Sprintf("failed to parse multipart form: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "missing .msf 'file' in form upload", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	msfBytes, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to read .msf file: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	fullReport := r.FormValue("full") == "1" || strings.EqualFold(r.FormValue("full"), "true")
+	forceVision := r.FormValue("transcribe") == "1" || strings.EqualFold(r.FormValue("transcribe"), "true")
+	apiKey := r.FormValue("apiKey")
+	if apiKey == "" {
+		apiKey = r.Header.Get("X-Gemini-API-Key")
+	}
+	model := r.FormValue("model")
+
+	zipBytes, setlistName, results, err := jazz.ProcessMSFToZip(msfBytes, jazz.BatchOptions{
+		FullReport:       fullReport,
+		ForceVision:      forceVision,
+		AnnotationConfig: jazz.DefaultAnnotationConfig(),
+		TranscribeOpts: jazz.TranscribeOptions{
+			APIKey: apiKey,
+			Model:  model,
+		},
+	})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to process .msf setlist: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	succeeded := 0
+	for _, res := range results {
+		if res.Source != "error" {
+			succeeded++
+		}
+	}
+	log.Printf("batch .msf %q: %d/%d songs generated", setlistName, succeeded, len(results))
+
+	safeName := strings.NewReplacer(" ", "_", "/", "-", "\\", "-").Replace(setlistName)
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s_companion_bundle.zip\"", safeName))
+	w.Header().Set("X-Batch-Total", strconv.Itoa(len(results)))
+	w.Header().Set("X-Batch-Succeeded", strconv.Itoa(succeeded))
+	_, _ = w.Write(zipBytes)
+}

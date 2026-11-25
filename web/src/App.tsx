@@ -38,6 +38,9 @@ export const App: React.FC = () => {
   const [showKeySettings, setShowKeySettings] = useState<boolean>(false);
   const [showKeyPromptModal, setShowKeyPromptModal] = useState<boolean>(false);
   const [pendingKeyInput, setPendingKeyInput] = useState<string>('');
+  const [batchFullReport, setBatchFullReport] = useState<boolean>(true);
+  const [batchForceVision, setBatchForceVision] = useState<boolean>(false);
+  const [batchStatus, setBatchStatus] = useState<string | null>(null);
 
   // Results & status
   const [loading, setLoading] = useState<boolean>(false);
@@ -82,6 +85,11 @@ export const App: React.FC = () => {
 
     return () => clearTimeout(timeout);
   }, [searchQuery]);
+
+  const isMSFFile = (file: File | null): boolean => {
+    if (!file) return false;
+    return file.name.toLowerCase().endsWith('.msf');
+  };
 
   const isVisualFile = (file: File | null): boolean => {
     if (!file) return false;
@@ -235,10 +243,53 @@ export const App: React.FC = () => {
       triggerAnalyze({ content: textContent.trim() });
     } else if (activeTab === 'upload') {
       if (!selectedFile) {
-        setError('Please select a chart file (PDF, photo, MusicXML, or iReal) to upload.');
+        setError('Please select a chart file (PDF, photo, .msf setlist, MusicXML, or iReal) to upload.');
+        return;
+      }
+      if (isMSFFile(selectedFile)) {
+        handleBatchMSF(selectedFile);
         return;
       }
       triggerAnalyze({ file: selectedFile });
+    }
+  };
+
+  const handleBatchMSF = async (file: File) => {
+    setLoading(true);
+    setError(null);
+    setBatchStatus(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (batchFullReport) formData.append('full', 'true');
+      if (batchForceVision) formData.append('transcribe', 'true');
+      if (apiKey) formData.append('apiKey', apiKey);
+      if (visionModel) formData.append('model', visionModel);
+
+      const res = await fetch('/api/batch/msf', { method: 'POST', body: formData });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || 'Failed to batch process .msf setlist');
+      }
+
+      const total = res.headers.get('X-Batch-Total');
+      const succeeded = res.headers.get('X-Batch-Succeeded');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${file.name.replace(/\.msf$/i, '').replace(/\s+/g, '_')}_companion_bundle.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      if (total && succeeded) {
+        setBatchStatus(`Generated ${succeeded} of ${total} companion PDFs + MobileSheets CSV import bundle.`);
+      } else {
+        setBatchStatus('Generated companion PDFs + MobileSheets CSV import bundle.');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Batch .msf processing failed');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -590,8 +641,11 @@ export const App: React.FC = () => {
                 >
                   <input
                     type="file"
-                    accept=".musicxml,.xml,.html,.htm,.pdf,.png,.jpg,.jpeg,.webp"
-                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                    accept=".musicxml,.xml,.html,.htm,.pdf,.png,.jpg,.jpeg,.webp,.msf"
+                    onChange={(e) => {
+                      setSelectedFile(e.target.files?.[0] || null);
+                      setBatchStatus(null);
+                    }}
                     className="hidden"
                     id="file-upload"
                   />
@@ -602,13 +656,50 @@ export const App: React.FC = () => {
                       <Upload className="w-10 h-10 text-slate-400 mb-2" />
                     )}
                     <span className="text-sm font-semibold text-blue-600 hover:underline">
-                      {selectedFile ? selectedFile.name : 'Click or drop Lead Sheet (PDF / Photo / MusicXML / iReal)'}
+                      {selectedFile ? selectedFile.name : 'Click or drop Lead Sheet or MobileSheets Setlist (.msf)'}
                     </span>
                     <p className="text-xs text-slate-500 mt-1">
-                      Supports scanned PDF charts, photos (.png, .jpg, .webp), .musicxml, and .html
+                      Supports MobileSheets .msf setlists, scanned PDFs, photos (.png, .jpg, .webp), .musicxml, and .html
                     </p>
                   </div>
                 </div>
+
+                {selectedFile && isMSFFile(selectedFile) && (
+                  <div className="bg-blue-50/80 border border-blue-200/80 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-blue-900 font-semibold text-xs uppercase tracking-wider">
+                      <Sparkles className="w-4 h-4 text-blue-600" />
+                      MobileSheets Setlist Batch (.msf)
+                    </div>
+                    <p className="text-xs text-blue-800">
+                      Extracts all charts from your <span className="font-mono font-semibold">.msf</span> setlist, generates companion PDFs, and packages them into a <span className="font-mono font-semibold">.zip</span> with a MobileSheets CSV import file so you can import them alongside your originals.
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-4 pt-1 text-xs text-slate-700">
+                      <label className="inline-flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={batchFullReport}
+                          onChange={(e) => setBatchFullReport(e.target.checked)}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span>Include Harmonic Overview pages (Full Companion PDF)</span>
+                      </label>
+                      <label className="inline-flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={batchForceVision}
+                          onChange={(e) => setBatchForceVision(e.target.checked)}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        <span>Always transcribe embedded PDFs via Gemini Vision (uses your Gemini Key)</span>
+                      </label>
+                    </div>
+                    {batchStatus && (
+                      <p className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                        {batchStatus}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {selectedFile && isVisualFile(selectedFile) && (
                   <div className="bg-amber-50/80 border border-amber-200/80 rounded-xl p-4 space-y-3">

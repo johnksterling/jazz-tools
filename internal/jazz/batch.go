@@ -240,7 +240,7 @@ func ProcessMSFToDir(msfData []byte, outDir string, opts BatchOptions) (string, 
 	cw := csv.NewWriter(&csvBuf)
 	_ = cw.WriteAll(csvRows)
 	cw.Flush()
-	csvName := sanitizeFilePart(archive.SetlistName) + "_mobilesheets.csv"
+	csvName := "00_mobilesheets_import.csv"
 	if err := os.WriteFile(filepath.Join(outDir, csvName), csvBuf.Bytes(), 0644); err != nil {
 		return archive.SetlistName, results, err
 	}

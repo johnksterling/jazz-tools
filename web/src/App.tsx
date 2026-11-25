@@ -257,7 +257,7 @@ export const App: React.FC = () => {
   const handleBatchMSF = async (file: File) => {
     setLoading(true);
     setError(null);
-    setBatchStatus(null);
+    setBatchStatus('Uploading .msf setlist...');
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -266,28 +266,47 @@ export const App: React.FC = () => {
       if (apiKey) formData.append('apiKey', apiKey);
       if (visionModel) formData.append('model', visionModel);
 
-      const res = await fetch('/api/batch/msf', { method: 'POST', body: formData });
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || 'Failed to batch process .msf setlist');
+      const startRes = await fetch('/api/batch/msf/start', { method: 'POST', body: formData });
+      if (!startRes.ok) {
+        const errText = await startRes.text();
+        throw new Error(errText || 'Failed to start batch processing .msf setlist');
       }
 
-      const total = res.headers.get('X-Batch-Total');
-      const succeeded = res.headers.get('X-Batch-Succeeded');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${file.name.replace(/\.msf$/i, '').replace(/\s+/g, '_')}_companion_bundle.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
-      if (total && succeeded) {
-        setBatchStatus(`Generated ${succeeded} of ${total} companion PDFs + MobileSheets CSV import bundle.`);
-      } else {
-        setBatchStatus('Generated companion PDFs + MobileSheets CSV import bundle.');
+      const startData = await startRes.json();
+      const jobId: string = startData.jobId;
+      setBatchStatus(`Started "${startData.setlistName}" (${startData.total} songs)...`);
+
+      while (true) {
+        await new Promise((r) => setTimeout(r, 1000));
+        const statusRes = await fetch(`/api/batch/status/${encodeURIComponent(jobId)}`);
+        if (!statusRes.ok) {
+          throw new Error('Lost connection while checking batch progress');
+        }
+        const st = await statusRes.json();
+        if (st.status === 'error') {
+          throw new Error(st.error || 'Batch processing failed');
+        }
+        if (st.status === 'done') {
+          const dlRes = await fetch(`/api/batch/download/${encodeURIComponent(jobId)}`);
+          if (!dlRes.ok) {
+            throw new Error('Failed to download generated companion bundle');
+          }
+          const blob = await dlRes.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${file.name.replace(/\.msf$/i, '').replace(/\s+/g, '_')}_companion_bundle.zip`;
+          a.click();
+          URL.revokeObjectURL(url);
+          setBatchStatus(`Done! Generated ${st.succeeded} of ${st.total} companion PDFs + MobileSheets CSV import bundle.`);
+          break;
+        }
+        const songHint = st.currentSong ? ` — ${st.currentSong}` : '';
+        setBatchStatus(`Processing ${st.completed} / ${st.total} songs${songHint}...`);
       }
     } catch (err: any) {
       setError(err.message || 'Batch .msf processing failed');
+      setBatchStatus(null);
     } finally {
       setLoading(false);
     }

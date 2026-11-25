@@ -2,6 +2,8 @@ package server
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +13,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"jazz-tools/internal/jazz"
 )
@@ -546,5 +550,175 @@ func (s *Server) handleBatchMSF(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s_companion_bundle.zip\"", safeName))
 	w.Header().Set("X-Batch-Total", strconv.Itoa(len(results)))
 	w.Header().Set("X-Batch-Succeeded", strconv.Itoa(succeeded))
+	_, _ = w.Write(zipBytes)
+}
+
+type batchJob struct {
+	ID          string `json:"jobId"`
+	Status      string `json:"status"` // "running", "done", "error"
+	SetlistName string `json:"setlistName"`
+	Completed   int    `json:"completed"`
+	Total       int    `json:"total"`
+	Succeeded   int    `json:"succeeded"`
+	CurrentSong string `json:"currentSong,omitempty"`
+	Error       string `json:"error,omitempty"`
+	zipBytes    []byte
+	createdAt   time.Time
+}
+
+var (
+	batchJobsMu sync.RWMutex
+	batchJobs   = make(map[string]*batchJob)
+)
+
+func newBatchJobID() string {
+	var b [8]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
+}
+
+func pruneOldBatchJobs() {
+	cutoff := time.Now().Add(-20 * time.Minute)
+	batchJobsMu.Lock()
+	for id, j := range batchJobs {
+		if j.createdAt.Before(cutoff) {
+			delete(batchJobs, id)
+		}
+	}
+	batchJobsMu.Unlock()
+}
+
+func (s *Server) handleBatchMSFStart(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(50 << 20); err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse multipart form: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "missing .msf 'file' in form upload", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	msfBytes, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to read .msf file: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	archive, err := jazz.ParseMSF(msfBytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("invalid .msf file: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	fullReport := r.FormValue("full") == "1" || strings.EqualFold(r.FormValue("full"), "true")
+	forceVision := r.FormValue("transcribe") == "1" || strings.EqualFold(r.FormValue("transcribe"), "true")
+	apiKey := r.FormValue("apiKey")
+	if apiKey == "" {
+		apiKey = r.Header.Get("X-Gemini-API-Key")
+	}
+	model := r.FormValue("model")
+
+	pruneOldBatchJobs()
+	job := &batchJob{
+		ID:          newBatchJobID(),
+		Status:      "running",
+		SetlistName: archive.SetlistName,
+		Total:       len(archive.Songs),
+		createdAt:   time.Now(),
+	}
+
+	batchJobsMu.Lock()
+	batchJobs[job.ID] = job
+	batchJobsMu.Unlock()
+
+	go func() {
+		zipBytes, setlistName, results, err := jazz.ProcessMSFToZip(msfBytes, jazz.BatchOptions{
+			FullReport:       fullReport,
+			ForceVision:      forceVision,
+			AnnotationConfig: jazz.DefaultAnnotationConfig(),
+			TranscribeOpts: jazz.TranscribeOptions{
+				APIKey: apiKey,
+				Model:  model,
+			},
+			Progress: func(completed, total int, song jazz.MSFSong, status string) {
+				batchJobsMu.Lock()
+				job.Completed = completed
+				job.Total = total
+				job.CurrentSong = song.Title
+				batchJobsMu.Unlock()
+			},
+		})
+
+		batchJobsMu.Lock()
+		defer batchJobsMu.Unlock()
+		if err != nil {
+			job.Status = "error"
+			job.Error = err.Error()
+			return
+		}
+		succeeded := 0
+		for _, res := range results {
+			if res.Source != "error" {
+				succeeded++
+			}
+		}
+		job.SetlistName = setlistName
+		job.Completed = len(results)
+		job.Succeeded = succeeded
+		job.zipBytes = zipBytes
+		job.Status = "done"
+		log.Printf("async batch .msf %q (%s): %d/%d songs generated", setlistName, job.ID, succeeded, len(results))
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(job)
+}
+
+func (s *Server) handleBatchStatus(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	batchJobsMu.RLock()
+	job, ok := batchJobs[id]
+	if !ok {
+		batchJobsMu.RUnlock()
+		http.Error(w, "batch job not found", http.StatusNotFound)
+		return
+	}
+	snap := *job
+	batchJobsMu.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(snap)
+}
+
+func (s *Server) handleBatchDownload(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	batchJobsMu.RLock()
+	job, ok := batchJobs[id]
+	if !ok {
+		batchJobsMu.RUnlock()
+		http.Error(w, "batch job not found", http.StatusNotFound)
+		return
+	}
+	status := job.Status
+	setlistName := job.SetlistName
+	zipBytes := job.zipBytes
+	errMsg := job.Error
+	batchJobsMu.RUnlock()
+
+	if status == "error" {
+		http.Error(w, errMsg, http.StatusInternalServerError)
+		return
+	}
+	if status != "done" || len(zipBytes) == 0 {
+		http.Error(w, "batch job not ready", http.StatusConflict)
+		return
+	}
+
+	safeName := strings.NewReplacer(" ", "_", "/", "-", "\\", "-").Replace(setlistName)
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s_companion_bundle.zip\"", safeName))
 	_, _ = w.Write(zipBytes)
 }

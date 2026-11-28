@@ -58,7 +58,7 @@ func TestGenerateLilyPondFullCompanion(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"\\pageBreak",
+		"\\bookpart",
 		"\\markuplist",
 		"Harmonic Overview",
 		"Harmonic Structure Summary (LLM Analysis)",

@@ -46,7 +46,7 @@ func GenerateLilyPondFullCompanion(tune *Tune, opts CompanionPDFOptions) (string
 
 	var buf strings.Builder
 	buf.WriteString(baseScore)
-	buf.WriteString("\n\\pageBreak\n\n")
+	buf.WriteString("\n\\bookpart {\n")
 	buf.WriteString("\\markuplist {\n")
 	buf.WriteString("  \\override #'(font-family . sans)\n")
 
@@ -172,6 +172,7 @@ func GenerateLilyPondFullCompanion(tune *Tune, opts CompanionPDFOptions) (string
 		buf.WriteString("  \\with-color #(rgb-color 0.91 0.93 0.96) \\draw-hline\n")
 	}
 
+	buf.WriteString("}\n")
 	buf.WriteString("}\n")
 	return buf.String(), nil
 }
